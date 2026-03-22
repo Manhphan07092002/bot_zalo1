@@ -32,6 +32,23 @@ function replaceAll(template, data) {
   return html;
 }
 
+let browserInstance = null;
+
+async function getBrowser() {
+  if (!browserInstance) {
+    browserInstance = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu'
+      ]
+    });
+  }
+  return browserInstance;
+}
+
 async function renderQuotePdf({ templatePath, outputPath, data }) {
   const template = fs.readFileSync(templatePath, 'utf8');
   const logoPath = path.resolve(__dirname, '..', 'assets', 'ctc-logo.gif');
@@ -40,13 +57,11 @@ async function renderQuotePdf({ templatePath, outputPath, data }) {
     logoDataUri: fileToDataUri(logoPath)
   });
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
-  });
+  const browser = await getBrowser();
+  let page;
 
   try {
-    const page = await browser.newPage();
+    page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'load' });
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
@@ -57,7 +72,9 @@ async function renderQuotePdf({ templatePath, outputPath, data }) {
       preferCSSPageSize: true
     });
   } finally {
-    await browser.close();
+    if (page) {
+      await page.close(); // Chỉ đóng lại thẻ trình duyệt tab đó, bảo lưu cục browser tổng
+    }
   }
 
   return outputPath;

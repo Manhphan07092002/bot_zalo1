@@ -36,6 +36,7 @@ async function main() {
   });
 
   console.log(`Đã tạo PDF: ${outputPath}`);
+  process.exit(0);
 }
 
 main().catch((err) => {
