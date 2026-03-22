@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Bảng chào giá CTC</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 8mm 14mm 8mm 14mm;
+    }
+
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 13px;
+      color: #000;
+      margin: 0;
+      padding: 0;
+      line-height: 1.22;
+      position: relative;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 90%;
+      height: 90%;
+      background-image: url("{{logoDataUri}}");
+      background-position: center;
+      background-repeat: no-repeat;
+      background-size: contain;
+      opacity: 0.08;
+      /* Rất mờ để không làm át chữ */
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .page {
+      width: 100%;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+
+    .logo-box {
+      width: 180px;
+      margin-right: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo-box img {
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+    }
+
+    .company-info {
+      flex: 1;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .company-name {
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 4px;
+    }
+
+    .company-details {
+      margin-bottom: 2px;
+    }
+
+    .company-details-row {
+      display: flex;
+      justify-content: space-between;
+      width: 90%;
+    }
+
+    .date-line {
+      text-align: right;
+      font-style: italic;
+      margin-top: 15px;
+      margin-bottom: 10px;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin: 2px 0 10px;
+    }
+
+    .contact-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #000;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+
+    .contact-table td {
+      border: 1px dotted #888;
+      padding: 6px 8px;
+      vertical-align: middle;
+    }
+
+    .contact-table .label {
+      font-weight: 700;
+      width: 14%;
+    }
+
+    .contact-table .value {
+      width: 36%;
+    }
+
+    .contact-table .value strong {
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .quote-number {
+      text-align: center;
+      font-weight: 700;
+      font-style: italic;
+      margin-bottom: 12px;
+      font-size: 14px;
+    }
+
+    .intro {
+      margin: 3px 0;
+      text-align: justify;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      border: 1.5px solid #000000;
+      padding: 10px 8px;
+    }
+
+    th {
+      background-color: #9bc2e6;
+      color: #000000;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 13px;
+    }
+
+    .center {
+      text-align: center;
+    }
+
+    .right {
+      text-align: right;
+    }
+
+    .product-name {
+      font-weight: 700;
+      color: #000000;
+      font-size: 15px;
+      margin-bottom: 6px;
+    }
+
+    .product-lines {
+      white-space: pre-wrap;
+      color: #000000;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .table-footer {
+      background-color: #ffffff !important;
+      font-weight: bold;
+    }
+
+    .total-row {
+      background-color: #ffffff !important;
+      color: #000000;
+      font-weight: bold;
+      font-size: 15px;
+    }
+
+    .words {
+      margin-top: 5px;
+      font-weight: 700;
+      font-style: italic;
+      font-size: 15px;
+    }
+
+    .terms {
+      margin-top: 10px;
+      font-size: 13px;
+    }
+
+    .terms p {
+      margin: 3px 0;
+      text-align: justify;
+    }
+
+    .thanks {
+      margin-top: 8px;
+      font-weight: 700;
+    }
+
+    .sign-wrap {
+      width: 100%;
+      margin-top: 12px;
+      display: table;
+    }
+
+    .sign-left,
+    .sign-right {
+      display: table-cell;
+      width: 50%;
+      vertical-align: top;
+    }
+
+    .sign-right {
+      text-align: center;
+    }
+
+    .sign-company,
+    .sign-title,
+    .sign-name {
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .sign-title {
+      margin-top: 2px;
+      margin-bottom: 90px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="logo-box">
+        <img src="{{logoDataUri}}" alt="CTC logo" />
+      </div>
+      <div class="company-info">
+        <div class="company-name">CÔNG TY CỔ PHẦN XÂY LẮP BƯU ĐIỆN MIỀN TRUNG - CTC</div>
+        <div class="company-details">Địa chỉ: 50B Nguyễn Du, Phường Hải Châu, Thành phố Đà Nẵng, Việt Nam.</div>
+        <div class="company-details company-details-row">
+          <span>Điện thoại: 02363.745.745 - 02363.745.746</span>
+          <span>Fax: 0236.3863669.</span>
+        </div>
+        <div class="company-details company-details-row">
+          <span>Website: <u>https://ctcdn.vn/</u></span>
+          <span>Email: <u>ctcdanang@gmail.com.</u></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="date-line">Đà Nẵng, ngày {{day}} tháng {{month}} năm {{year}}</div>
+
+    <div class="title">BẢNG CHÀO GIÁ</div>
+    <div class="quote-number">Số: {{quoteNumber}}/BG-CTC</div>
+
+    <div class="customer" style="margin-bottom: 8px; font-size: 15pt;">
+      Kính gửi: <strong>{{customerName}}</strong>
+    </div>
+
+    <table class="contact-table">
+      <tr>
+        <td class="label">Người nhận:</td>
+        <td class="value"><strong>{{customerReceiver}}</strong></td>
+        <td class="label">Người gửi:</td>
+        <td class="value"><strong>PHAN XUÂN MẠNH</strong></td>
+      </tr>
+      <tr>
+        <td class="label">Bộ phận:</td>
+        <td class="value">{{customerDepartment}}</td>
+        <td class="label">Bộ phận:</td>
+        <td class="value">Phòng Kinh Doanh</td>
+      </tr>
+      <tr>
+        <td class="label">Điện thoại:</td>
+        <td class="value">{{customerPhone}}</td>
+        <td class="label">Điện thoại:</td>
+        <td class="value">0979.900.874</td>
+      </tr>
+      <tr>
+        <td class="label">Email:</td>
+        <td class="value">{{customerEmail}}</td>
+        <td class="label">Email:</td>
+        <td class="value"><a href="mailto:xuanmanh@ctcdn.vn"
+            style="color: blue; text-decoration: underline;">xuanmanh@ctcdn.vn</a></td>
+      </tr>
+    </table>
+
+    <div class="intro">CTC chân thành cám ơn sự quan tâm của Quý Viễn thông đến sản phẩm Công ty chúng tôi trong thời
+      gian qua.</div>
+    <div class="intro">Theo yêu cầu của Quý Viễn thông yêu cầu báo giá vật tư hàng hóa. Chúng tôi xin trân trọng báo giá
+      như sau:</div>
+
+    <table>
+      <colgroup>
+        <col style="width: 6%" />
+        <col style="width: 44%" />
+        <col style="width: 11%" />
+        <col style="width: 7%" />
+        <col style="width: 6%" />
+        <col style="width: 13%" />
+        <col style="width: 13%" />
+      </colgroup>
+      <thead>
+        <tr>
+          <th>STT</th>
+          <th>MÔ TẢ HÀNG HÓA</th>
+          <th>XUẤT XỨ</th>
+          <th>ĐVT</th>
+          <th>SL</th>
+          <th>ĐƠN GIÁ</th>
+          <th>THÀNH TIỀN</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{productRows}}
+        <tr class="table-footer">
+          <td colspan="6" class="right">Cộng trước VAT :</td>
+          <td class="right">{{subtotal}}</td>
+        </tr>
+        <tr class="table-footer">
+          <td colspan="6" class="right">VAT {{vatPercent}}% :</td>
+          <td class="right">{{vatAmount}}</td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="6" class="right">TỔNG CỘNG :</td>
+          <td class="right">{{grandTotal}}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="words">Bằng chữ: {{amountInWords}}</div>
+
+    <div class="terms">
+      <p>* Hàng hóa mới 100%, xuất xứ như biểu giá trên.</p>
+      <p>* Tiến độ và địa điểm giao nhận: 5-7 ngày kể từ ngày ký hợp đồng (không tính ngày nghỉ và lễ), địa điểm giao
+        nhận: Tại kho của bên mua.</p>
+      <p>* Rất mong sự hợp tác của Quý Viễn thông.</p>
+      <p>* Tiến độ và phương thức thanh toán: 30 ngày, kể từ ngày bàn giao nghiệm thu hàng hóa và bên mua nhận được hóa
+        đơn có thuế GTGT, và các giấy tờ liên quan. Thanh toán bằng chuyển khoản vào tài khoản của bên bán.</p>
+      <p>* Số tài khoản giao dịch của bên bán: 5650006625 NH TMCP Đầu tư và Phát triển Việt Nam CN Sông Hàn - Đà Nẵng.
+      </p>
+      <p>* Thời gian bảo hành: 12 tháng kể từ ngày hàng hóa được nghiệm thu.</p>
+      <p>* Hiệu lực báo giá: 30 ngày kể từ ngày ký.</p>
+    </div>
+
+    <div class="thanks">TRÂN TRỌNG CÁM ƠN!</div>
+
+    <div class="sign-wrap">
+      <div class="sign-left"></div>
+      <div class="sign-right">
+        <div class="sign-company">CÔNG TY CP XÂY LẮP BƯU ĐIỆN MIỀN TRUNG</div>
+        <div class="sign-title">GIÁM ĐỐC KINH DOANH</div>
+        <div class="sign-name">NGUYỄN VĂN ĐẠT</div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

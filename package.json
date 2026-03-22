@@ -1,0 +1,17 @@
+{
+  "name": "ctc-quote-bot",
+  "version": "1.0.0",
+  "description": "Tao bang chao gia PDF theo mau CTC, chi thay ten khach hang va noi dung san pham",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "quote": "node index.js",
+    "example": "node index.js --input ./data/example.json --output ./output/bao-gia-example.pdf"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "puppeteer": "^24.7.1"
+  }
+}

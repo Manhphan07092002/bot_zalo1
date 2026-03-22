@@ -1,0 +1,25 @@
+{
+  "customerName": "VIỄN THÔNG HUẾ",
+  "customerReceiver": "Nguyễn Bá Toàn",
+  "customerPhone": "0912.345.678",
+  "customerEmail": "lienhe@vienthonghue.vn",
+  "products": [
+    {
+      "productTitle": "Bộ chuyển đổi tín hiệu Mini Converter SDI to HDMI 6G",
+      "productContent": "- Dòng 1\n- Dòng 2",
+      "origin": "Singapore",
+      "unit": "Bộ",
+      "quantity": 1,
+      "unitPrice": 5700000
+    },
+    {
+      "productTitle": "Cáp quang luồn dây SDI chuyên dụng",
+      "productContent": "- Cho đường truyền SDI\n- 10 mét",
+      "origin": "Việt Nam",
+      "unit": "Sợi",
+      "quantity": 2,
+      "unitPrice": 300000
+    }
+  ],
+  "vatPercent": 10
+}
