@@ -7,11 +7,13 @@
   "scripts": {
     "start": "node server.js",
     "quote": "node index.js",
-    "example": "node index.js --input ./data/example.json --output ./output/bao-gia-example.pdf"
+    "example": "node index.js --input ./data/example.json --output ./output/bao-gia-example.pdf",
+    "telegram": "node telegram-bot.js"
   },
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "node-telegram-bot-api": "^0.67.0",
     "puppeteer": "^24.7.1"
   }
 }

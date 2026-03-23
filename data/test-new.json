@@ -1,0 +1,19 @@
+{
+  "customer": {
+    "name": "VIỄN THÔNG ĐẮK LẮK",
+    "receiver": "Nguyễn Bá Toàn",
+    "phone": "0912345678",
+    "email": "abc@example.com"
+  },
+  "items": [
+    {
+      "description": "Bộ chuyển đổi tín hiệu Mini Converter SDI to HDMI 6G",
+      "origin": "Singapore",
+      "unit": "Bộ",
+      "quantity": 1,
+      "costPrice": 5700000
+    }
+  ],
+  "profitRate": 12,
+  "vatPercent": 8
+}

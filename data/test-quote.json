@@ -1,0 +1,18 @@
+{
+  "customer": {
+    "name": "VIỄN THÔNG HUẾ",
+    "address": "",
+    "phone": "0912345678",
+    "email": "abc@example.com"
+  },
+  "items": [
+    {
+      "description": "Bộ chuyển đổi tín hiệu Mini Converter SDI to HDMI 6G",
+      "origin": "China",
+      "unit": "cái",
+      "quantity": 2,
+      "costPrice": 1850000
+    }
+  ],
+  "profitRate": 12
+}
