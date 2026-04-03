@@ -6,8 +6,8 @@
   <title>Bảng chào giá CTC</title>
   <style>
 @font-face {
-  font-family: "Times New Roman Local";
-  src: url("file:///usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf") format("truetype");
+  font-family: "CTC PDF Font";
+  src: local("DejaVu Serif");
   font-weight: normal;
   font-style: normal;
 }
@@ -18,7 +18,7 @@
     }
 
     body {
-      font-family: "Times New Roman Local", "Times New Roman", "Liberation Serif", serif;
+      font-family: "CTC PDF Font", "DejaVu Serif", "Liberation Serif", serif;
       font-size: 13px;
       color: #000;
       margin: 0;
@@ -56,11 +56,12 @@
     }
 
     .logo-box {
-      width: 180px;
-      margin-right: 20px;
+      width: 165px;
+      margin-right: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
+      flex-shrink: 0;
     }
 
     .logo-box img {
@@ -71,14 +72,15 @@
 
     .company-info {
       flex: 1;
-      font-size: 13px;
-      line-height: 1.5;
+      font-size: 12px;
+      line-height: 1.4;
     }
 
     .company-name {
       font-weight: 700;
-      font-size: 15px;
+      font-size: 13px;
       margin-bottom: 4px;
+      line-height: 1.25;
     }
 
     .company-details {
@@ -88,7 +90,8 @@
     .company-details-row {
       display: flex;
       justify-content: space-between;
-      width: 90%;
+      width: 100%;
+      gap: 12px;
     }
 
     .date-line {
@@ -266,15 +269,15 @@
         <img src="{{logoDataUri}}" alt="CTC logo" />
       </div>
       <div class="company-info">
-        <div class="company-name">CÔNG TY CỔ PHẦN XÂY LẮP BƯU ĐIỆN MIỀN TRUNG - CTC</div>
-        <div class="company-details">Địa chỉ: 50B Nguyễn Du, Phường Hải Châu, Thành phố Đà Nẵng, Việt Nam.</div>
+        <div class="company-name">{{companyName}}</div>
+        <div class="company-details">Địa chỉ: {{companyAddress}}</div>
         <div class="company-details company-details-row">
-          <span>Điện thoại: 02363.745.745 - 02363.745.746</span>
-          <span>Fax: 0236.3863669.</span>
+          <span>Điện thoại: {{companyPhone}}</span>
+          <span></span>
         </div>
         <div class="company-details company-details-row">
           <span>Website: <u>https://ctcdn.vn/</u></span>
-          <span>Email: <u>ctcdanang@gmail.com.</u></span>
+          <span>Email: <u>{{companyEmail}}</u></span>
         </div>
       </div>
     </div>

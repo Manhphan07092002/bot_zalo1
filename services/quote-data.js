@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { config } = require('./config');
+const { getNextQuoteNumber } = require('./history-store');
 
 function formatMoney(value) {
   return Number(value || 0).toLocaleString('vi-VN');
@@ -71,37 +72,6 @@ function getCounterPath() {
   return path.resolve(__dirname, '..', 'data', 'counter.json');
 }
 
-function getNextQuoteNumber(productsInput) {
-  const counterPath = getCounterPath();
-  let currentId = 0;
-  let lastHash = '';
-
-  if (fs.existsSync(counterPath)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(counterPath, 'utf8'));
-      currentId = data.currentId ?? 0;
-      lastHash = data.lastHash ?? '';
-    } catch (_) {}
-  }
-
-  const hash = crypto
-    .createHash('md5')
-    .update(JSON.stringify(productsInput || []))
-    .digest('hex');
-
-  if (hash !== lastHash) {
-    currentId += 1;
-    fs.mkdirSync(path.dirname(counterPath), { recursive: true });
-    fs.writeFileSync(
-      counterPath,
-      JSON.stringify({ currentId, lastHash: hash }, null, 2),
-      'utf8'
-    );
-  }
-
-  return String(currentId).padStart(3, '0');
-}
-
 function buildQuoteData(input) {
   const now = new Date();
   const customer = input.customer || {};
@@ -126,7 +96,7 @@ function buildQuoteData(input) {
       ? input.items.map((p) => {
           const quantity = normalizeNumber(p.quantity, 1);
           const costPrice = normalizeNumber(p.costPrice ?? p.unitPrice, 0);
-          const profitRate = normalizeNumber(p.profitRate ?? input.profitRate, 12);
+          const profitRate = normalizeNumber(p.profitRate ?? input.profitRate, config.defaultProfitRate);
           const salePrice = Math.round(costPrice * (1 + profitRate / 100));
 
           return {
@@ -167,9 +137,7 @@ function buildQuoteData(input) {
     };
   });
 
-  let productRows = '';
-  processedProducts.forEach((p, index) => {
-    productRows += `
+  const productRows = processedProducts.map((p, index) => `
       <tr>
         <td class="center">${index + 1}</td>
         <td>
@@ -181,14 +149,13 @@ function buildQuoteData(input) {
         <td class="center">${p.quantity}</td>
         <td class="right">${p.unitPrice}</td>
         <td class="right">${p.lineTotal}</td>
-      </tr>`;
-  });
+      </tr>`).join('');
 
   const subtotal = normalizeNumber(input.subtotal, calcSubtotal);
-  const vatPercent = normalizeNumber(input.vatPercent, 8);
-  const vatAmount = normalizeNumber(input.vatAmount, Math.round(subtotal * vatPercent / 100));
+  const vatPercent = normalizeNumber(input.vatPercent, config.defaultVatPercent);
+  const vatAmount = normalizeNumber(input.vatAmount, Math.round((subtotal * vatPercent) / 100));
   const grandTotal = normalizeNumber(input.grandTotal, subtotal + vatAmount);
-  const quoteNumber = input.quoteNumber || getNextQuoteNumber(processedProducts);
+  const quoteNumber = input.quoteNumber || getNextQuoteNumber(getCounterPath());
 
   return {
     quoteNumber,

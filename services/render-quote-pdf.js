@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const { config } = require('./config');
 
 function fileToDataUri(filePath) {
   if (!fs.existsSync(filePath)) return '';
@@ -61,17 +62,17 @@ async function getBrowser() {
 }
 
 function injectFontFaces(html) {
-  const regularPath = '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf';
-  const boldPath = '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Bold.ttf';
-  const italicPath = '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Italic.ttf';
-  const boldItalicPath = '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Bold_Italic.ttf';
+  const regularPath = '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf';
+  const boldPath = '/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf';
+  const italicPath = '/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf';
+  const boldItalicPath = '/usr/share/fonts/truetype/dejavu/DejaVuSerif-BoldItalic.ttf';
 
   let fontCss = '';
 
   if (fs.existsSync(regularPath)) {
     fontCss += `
 @font-face {
-  font-family: "Times New Roman Local";
+  font-family: "CTC PDF Font";
   src: url("${fileToDataUri(regularPath)}") format("truetype");
   font-weight: normal;
   font-style: normal;
@@ -82,7 +83,7 @@ function injectFontFaces(html) {
   if (fs.existsSync(boldPath)) {
     fontCss += `
 @font-face {
-  font-family: "Times New Roman Local";
+  font-family: "CTC PDF Font";
   src: url("${fileToDataUri(boldPath)}") format("truetype");
   font-weight: bold;
   font-style: normal;
@@ -93,7 +94,7 @@ function injectFontFaces(html) {
   if (fs.existsSync(italicPath)) {
     fontCss += `
 @font-face {
-  font-family: "Times New Roman Local";
+  font-family: "CTC PDF Font";
   src: url("${fileToDataUri(italicPath)}") format("truetype");
   font-weight: normal;
   font-style: italic;
@@ -104,7 +105,7 @@ function injectFontFaces(html) {
   if (fs.existsSync(boldItalicPath)) {
     fontCss += `
 @font-face {
-  font-family: "Times New Roman Local";
+  font-family: "CTC PDF Font";
   src: url("${fileToDataUri(boldItalicPath)}") format("truetype");
   font-weight: bold;
   font-style: italic;
@@ -130,7 +131,11 @@ async function renderQuotePdf({ templatePath, outputPath, data }) {
 
   let html = replaceAll(template, {
     ...data,
-    logoDataUri: fileToDataUri(logoPath)
+    logoDataUri: fileToDataUri(logoPath),
+    companyName: config.companyName,
+    companyAddress: config.companyAddress,
+    companyPhone: config.companyPhone,
+    companyEmail: config.companyEmail
   });
 
   html = injectFontFaces(html);
@@ -148,7 +153,8 @@ async function renderQuotePdf({ templatePath, outputPath, data }) {
     });
 
     await page.setContent(html, {
-      waitUntil: 'networkidle0'
+      waitUntil: 'networkidle0',
+      timeout: config.renderTimeoutMs
     });
 
     await page.evaluate(async () => {
@@ -169,7 +175,8 @@ async function renderQuotePdf({ templatePath, outputPath, data }) {
         right: '0',
         bottom: '0',
         left: '0'
-      }
+      },
+      timeout: config.renderTimeoutMs
     });
 
     return outputPath;

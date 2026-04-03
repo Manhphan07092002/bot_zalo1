@@ -1,147 +1,74 @@
+const { config } = require('./services/config');
+const { createScope } = require('./services/logger');
+const { parseQuoteRequest, validatePayload } = require('./services/telegram-parser');
+const { createRateLimiter } = require('./services/rate-limit');
 const TelegramBot = require('node-telegram-bot-api');
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const log = createScope('telegram-bot');
+const BOT_TOKEN = config.telegramBotToken;
+const rateLimit = createRateLimiter({
+  windowMs: config.rateLimitWindowMs,
+  max: config.rateLimitMax
+});
+
 if (!BOT_TOKEN) {
-  console.error('Thiếu TELEGRAM_BOT_TOKEN');
+  log.error('Thiếu TELEGRAM_BOT_TOKEN');
   process.exit(1);
 }
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
-function extractFieldFromLines(lines, label) {
-  const lowerLabel = label.toLowerCase();
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    const idx = line.indexOf(':');
-    if (idx === -1) continue;
-
-    const key = line.slice(0, idx).trim().toLowerCase();
-    const value = line.slice(idx + 1).trim();
-
-    if (key === lowerLabel) {
-      return value;
-    }
-  }
-
-  return '';
-}
-
-function parseItems(text) {
-  const lines = text
-    .split('\n')
-    .map(s => s.trim())
-    .filter(Boolean);
-
-  const items = [];
-
-  for (const line of lines) {
-    const cleaned = line.replace(/^\d+\.\s*/, '');
-    const parts = cleaned.split('|').map(s => s.trim());
-
-    if (parts.length >= 5) {
-      const quantity = Number(String(parts[3] || '').replace(/[^\d.-]/g, ''));
-      const costPrice = Number(String(parts[4] || '').replace(/[^\d.-]/g, ''));
-
-      items.push({
-        description: parts[0] || '',
-        origin: parts[1] || '',
-        unit: parts[2] || '',
-        quantity: Number.isFinite(quantity) ? quantity : 0,
-        costPrice: Number.isFinite(costPrice) ? costPrice : 0
-      });
-    }
-  }
-
-  return items;
-}
-
-function parseQuoteRequest(text) {
-  const lines = text.split('\n');
-
-  const customerName = extractFieldFromLines(lines, 'Khách hàng');
-  const customerReceiver = extractFieldFromLines(lines, 'Người nhận');
-  const customerDepartment = extractFieldFromLines(lines, 'Bộ phận');
-  const phone = extractFieldFromLines(lines, 'Điện thoại');
-  const email = extractFieldFromLines(lines, 'Email');
-
-  const profitRateRaw = extractFieldFromLines(lines, 'Lãi suất');
-  const profitRate = profitRateRaw
-    ? Number(String(profitRateRaw).replace(/[^\d.-]/g, ''))
-    : 12;
-
-  let itemsBlock = '';
-  const hangHoaIndex = lines.findIndex(line => /^\s*Hàng hóa\s*:/i.test(line));
-
-  if (hangHoaIndex !== -1) {
-    itemsBlock = lines.slice(hangHoaIndex + 1).join('\n');
-  }
-
-  const items = parseItems(itemsBlock);
-
-  return {
-    customer: {
-      name: customerName || '',
-      receiver: customerReceiver || '',
-      department: customerDepartment || '',
-      phone: phone || '',
-      email: email || ''
-    },
-    items,
-    profitRate: Number.isFinite(profitRate) ? profitRate : 12
-  };
-}
-
-function validatePayload(payload) {
-  if (!payload.customer?.name) {
-    return 'Thiếu tên khách hàng.';
-  }
-
-  if (!Array.isArray(payload.items) || payload.items.length === 0) {
-    return 'Thiếu danh sách hàng hóa.';
-  }
-
-  for (const item of payload.items) {
-    if (!item.description) return 'Có mặt hàng thiếu mô tả.';
-    if (!(item.quantity > 0)) return `Mặt hàng "${item.description}" thiếu hoặc sai số lượng.`;
-    if (!(item.costPrice > 0)) return `Mặt hàng "${item.description}" thiếu hoặc sai đơn giá nhập.`;
-  }
-
-  return null;
+function isAllowedChat(chatId) {
+  if (!config.telegramAllowedChatIds.length) return true;
+  return config.telegramAllowedChatIds.includes(String(chatId));
 }
 
 async function createQuotePdf(payload) {
-  const res = await fetch('http://127.0.0.1:3000/api/quote', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.renderTimeoutMs);
 
-  if (!res.ok) {
-    let msg = '';
-    try {
-      msg = await res.text();
-    } catch (_) {}
-    throw new Error(`API báo giá lỗi ${res.status}: ${msg || 'không rõ lỗi'}`);
+  try {
+    const res = await fetch(config.quoteApiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey || ''
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+
+    if (!res.ok) {
+      let msg = '';
+      try {
+        msg = await res.text();
+      } catch (_) {}
+      throw new Error(`API báo giá lỗi ${res.status}: ${msg || 'không rõ lỗi'}`);
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/pdf')) {
+      const txt = await res.text();
+      throw new Error(`API không trả PDF: ${txt}`);
+    }
+
+    const disposition = res.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename="([^"]+)"/i);
+    const fileName = match ? match[1] : 'bao-gia-ctc.pdf';
+
+    const arrayBuffer = await res.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuffer), fileName };
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const contentType = res.headers.get('content-type') || '';
-  if (!contentType.includes('application/pdf')) {
-    const txt = await res.text();
-    throw new Error(`API không trả PDF: ${txt}`);
-  }
-
-  const disposition = res.headers.get('content-disposition') || '';
-  const match = disposition.match(/filename="([^"]+)"/i);
-  const fileName = match ? match[1] : 'bao-gia-ctc.pdf';
-
-  const arrayBuffer = await res.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  return { buffer, fileName };
 }
 
 bot.onText(/\/start/i, async (msg) => {
+  if (!isAllowedChat(msg.chat.id)) {
+    await bot.sendMessage(msg.chat.id, 'Chat này chưa được phép sử dụng bot.');
+    return;
+  }
+
   await bot.sendMessage(
     msg.chat.id,
     [
@@ -150,32 +77,52 @@ bot.onText(/\/start/i, async (msg) => {
       'Mẫu nhập:',
       'Khách hàng: VIỄN THÔNG HUẾ',
       'Người nhận: Nguyễn Bá Toàn',
-      'Bộ phận:',
+      'Bộ phận: Kỹ thuật',
       'Điện thoại: 0912345678',
       'Email: abc@example.com',
       '',
       'Hàng hóa:',
-      '1. Bộ chuyển đổi tín hiệu Mini Converter SDI to HDMI 6G | China | cái | 2 | 1850000',
+      '1. Bộ chuyển đổi tín hiệu Mini Converter SDI to HDMI 6G | China | cái | 2 | 1.850.000 | Ghi chú tùy chọn',
       '',
-      'Lãi suất: 12'
+      `Lãi suất: ${config.defaultProfitRate}`,
+      `VAT: ${config.defaultVatPercent}`
     ].join('\n')
   );
 });
 
 bot.on('message', async (msg) => {
-  try {
-    const chatId = msg.chat.id;
-    const text = (msg.text || '').trim();
+  const chatId = msg.chat.id;
+  const text = (msg.text || '').trim();
 
+  try {
     if (!text || text.startsWith('/start')) return;
 
-    const payload = parseQuoteRequest(text);
-    const validationError = validatePayload(payload);
+    if (!isAllowedChat(chatId)) {
+      await bot.sendMessage(chatId, 'Chat này chưa được phép sử dụng bot.');
+      return;
+    }
 
+    if (!rateLimit(String(chatId))) {
+      await bot.sendMessage(chatId, 'Anh gửi hơi nhanh, vui lòng chờ một chút rồi thử lại.');
+      return;
+    }
+
+    const payload = parseQuoteRequest(text, {
+      defaultProfitRate: config.defaultProfitRate,
+      defaultVatPercent: config.defaultVatPercent
+    });
+
+    const validationError = validatePayload(payload);
     if (validationError) {
       await bot.sendMessage(chatId, `Chưa tạo được báo giá. ${validationError}`);
       return;
     }
+
+    log.info('Đang tạo báo giá', {
+      chatId,
+      customerName: payload.customer.name,
+      itemCount: payload.items.length
+    });
 
     await bot.sendMessage(chatId, `Em đang tạo báo giá cho ${payload.customer.name}...`);
 
@@ -193,14 +140,11 @@ bot.on('message', async (msg) => {
       }
     );
   } catch (err) {
-    console.error('Lỗi bot Telegram:', err);
+    log.error('Lỗi bot Telegram', err.message);
     try {
-      await bot.sendMessage(
-        msg.chat.id,
-        `Chưa tạo được báo giá. Lý do: ${err.message}`
-      );
+      await bot.sendMessage(chatId, `Chưa tạo được báo giá. Lý do: ${err.message}`);
     } catch (_) {}
   }
 });
 
-console.log('Telegram bot đang chạy...');
+log.info('Telegram bot đang chạy...');
