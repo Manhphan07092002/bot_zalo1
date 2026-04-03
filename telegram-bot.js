@@ -1,6 +1,7 @@
 const { config } = require('./services/config');
 const { createScope } = require('./services/logger');
-const { parseQuoteRequest, validatePayload } = require('./services/telegram-parser');
+const { validatePayload } = require('./services/telegram-parser');
+const { parseQuoteRequestWithAI } = require('./services/ai-parser');
 const { createRateLimiter } = require('./services/rate-limit');
 const TelegramBot = require('node-telegram-bot-api');
 
@@ -107,7 +108,7 @@ bot.on('message', async (msg) => {
       return;
     }
 
-    const payload = parseQuoteRequest(text, {
+    const { payload, mode } = await parseQuoteRequestWithAI(text, {
       defaultProfitRate: config.defaultProfitRate,
       defaultVatPercent: config.defaultVatPercent
     });
@@ -121,7 +122,8 @@ bot.on('message', async (msg) => {
     log.info('Đang tạo báo giá', {
       chatId,
       customerName: payload.customer.name,
-      itemCount: payload.items.length
+      itemCount: payload.items.length,
+      parseMode: mode
     });
 
     await bot.sendMessage(chatId, `Em đang tạo báo giá cho ${payload.customer.name}...`);

@@ -54,7 +54,11 @@ const config = {
   companyPhone: process.env.COMPANY_PHONE || '02363.745.745 - 02363.745.746',
   companyEmail: process.env.COMPANY_EMAIL || 'ctcdanang@gmail.com',
   defaultProfitRate: toNumber(process.env.DEFAULT_PROFIT_RATE, 12),
-  defaultVatPercent: toNumber(process.env.DEFAULT_VAT_PERCENT, 8)
+  defaultVatPercent: toNumber(process.env.DEFAULT_VAT_PERCENT, 8),
+  aiProvider: (process.env.AI_PROVIDER || '').toLowerCase(),
+  aiApiKey: process.env.AI_API_KEY || '',
+  aiModel: process.env.AI_MODEL || '',
+  aiEnabled: ['1', 'true', 'yes', 'on'].includes(String(process.env.AI_ENABLED || '').toLowerCase())
 };
 
 module.exports = { config };

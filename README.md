@@ -9,6 +9,7 @@ Bot tạo bảng chào giá PDF theo mẫu cố định của CTC.
 - Healthcheck `GET /health`
 - Version endpoint `GET /version`
 - Lưu lịch sử báo giá gần nhất
+- Có thể tích hợp AI để phân tích đầu vào thành JSON chuẩn
 - Hỗ trợ tiếng Việt ổn định khi render PDF
 
 ## Cài đặt
@@ -24,6 +25,10 @@ QUOTE_API_URL=http://127.0.0.1:3000/api/quote
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 DEFAULT_PROFIT_RATE=12
 DEFAULT_VAT_PERCENT=8
+AI_ENABLED=false
+AI_PROVIDER=openai
+AI_API_KEY=your_ai_api_key_here
+AI_MODEL=gpt-4.1-mini
 ```
 
 ## Chạy local
@@ -72,6 +77,7 @@ VAT: 8
 - `telegram-bot.js`: bot Telegram
 - `services/config.js`: nạp cấu hình `.env`
 - `services/telegram-parser.js`: parse và validate nội dung Telegram
+- `services/ai-parser.js`: dùng AI để chuyển đầu vào tự nhiên thành JSON chuẩn
 - `services/quote-data.js`: xử lý dữ liệu báo giá
 - `services/history-store.js`: cấp số báo giá có lock file và lưu lịch sử
 - `services/render-quote-pdf.js`: render HTML sang PDF bằng Puppeteer
@@ -82,3 +88,4 @@ VAT: 8
 - Thư mục `output/` cũng đã ignore
 - Nếu chạy bằng PM2, nhớ restart lại process sau khi sửa code
 - Lịch sử báo giá lưu ở `data/quote-history.json`
+- Nếu chưa bật AI hoặc AI lỗi, hệ thống sẽ tự fallback về parser thường
