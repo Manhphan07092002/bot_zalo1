@@ -23,6 +23,10 @@ function getHistoryPath() {
   return path.resolve(__dirname, '..', 'data', 'quote-history.json');
 }
 
+function getQuotesDir() {
+  return path.resolve(__dirname, '..', 'data', 'quotes');
+}
+
 function getLockPath() {
   return path.resolve(__dirname, '..', 'data', 'quote-counter.lock');
 }
@@ -65,7 +69,58 @@ function appendQuoteHistory(entry) {
   writeJson(historyPath, history.slice(0, 500));
 }
 
+function getRecentQuotes(limit = 10) {
+  const history = readJsonSafe(getHistoryPath(), []);
+  return history.slice(0, Math.max(1, limit));
+}
+
+function normalizeQuoteLookup(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  const digits = raw.replace(/[^\d]/g, '');
+  return {
+    raw,
+    digits: digits ? digits.padStart(3, '0') : ''
+  };
+}
+
+function findQuotesByKeyword(keyword, limit = 10) {
+  const lookup = normalizeQuoteLookup(keyword);
+  if (!lookup.raw) return [];
+  const history = readJsonSafe(getHistoryPath(), []);
+  return history.filter((entry) => {
+    const quoteNumber = String(entry.quoteNumber || '').padStart(3, '0');
+    const haystack = [quoteNumber, entry.customerName, entry.customerReceiver, entry.createdAt]
+      .filter(Boolean)
+      .join(' | ')
+      .toLowerCase();
+    return haystack.includes(lookup.raw) || (lookup.digits && quoteNumber === lookup.digits);
+  }).slice(0, Math.max(1, limit));
+}
+
+function findQuoteByNumber(value) {
+  const lookup = normalizeQuoteLookup(value);
+  if (!lookup.digits) return null;
+  const history = readJsonSafe(getHistoryPath(), []);
+  return history.find((entry) => String(entry.quoteNumber || '').padStart(3, '0') === lookup.digits) || null;
+}
+
+function saveQuoteSource(quoteNumber, payload) {
+  const quotePath = path.resolve(getQuotesDir(), `${String(quoteNumber).padStart(3, '0')}.json`);
+  writeJson(quotePath, payload);
+  return quotePath;
+}
+
+function getQuoteSource(quoteNumber) {
+  const quotePath = path.resolve(getQuotesDir(), `${String(quoteNumber).padStart(3, '0')}.json`);
+  return readJsonSafe(quotePath, null);
+}
+
 module.exports = {
   appendQuoteHistory,
-  getNextQuoteNumber
+  getNextQuoteNumber,
+  getRecentQuotes,
+  findQuotesByKeyword,
+  findQuoteByNumber,
+  saveQuoteSource,
+  getQuoteSource
 };

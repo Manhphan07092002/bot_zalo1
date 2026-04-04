@@ -1,3 +1,7 @@
 node_modules/
 output/
 .env
+
+data/quote-history.json
+data/quotes/
+data/counter.json

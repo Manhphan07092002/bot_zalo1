@@ -107,12 +107,48 @@ function normalizePayloadBeforeQuestions(payload) {
   return payload;
 }
 
+function resolveSignerInfo(choice) {
+  const signerMap = {
+    '1': { title: 'TỔNG GIÁM ĐỐC', name: 'NGUYỄN VĂN DUY' },
+    '2': { title: 'PHÓ TỔNG GIÁM ĐỐC', name: 'DƯƠNG THÁI XUYÊN' },
+    '3': { title: 'GIÁM ĐỐC KINH DOANH', name: 'NGUYỄN VĂN ĐẠT' }
+  };
+  return signerMap[String(choice || '3')] || signerMap['3'];
+}
+
+function buildPreviewMessage(payload) {
+  const customerName = payload?.customer?.name || 'Chưa rõ';
+  const itemCount = Array.isArray(payload?.items) ? payload.items.length : 0;
+  const profitRate = Number(payload?.profitRate || 0);
+  const vatPercent = Number(payload?.vatPercent || 0);
+  const meta = payload?.meta || {};
+  const signer = resolveSignerInfo(meta.signerChoice);
+  const deliveryClause = String(meta.deliveryPaymentClause || '').trim();
+  const terms = deliveryClause || `Giao hàng: ${meta.deliveryDaysText || '7-10 ngày'} | Thanh toán: ${meta.paymentDaysText || '30 ngày'}`;
+
+  return [
+    'Em gửi Anh bản xem trước trước khi xuất PDF:',
+    '',
+    `1. Khách hàng: ${customerName}`,
+    `2. Số mặt hàng: ${itemCount}`,
+    `3. Lãi suất: ${profitRate}%`,
+    `4. VAT: ${vatPercent}%`,
+    `5. Người ký: ${signer.title} - ${signer.name}`,
+    `6. Điều khoản chính: ${terms}`,
+    '',
+    'Nếu đúng rồi, Anh trả lời: ok',
+    'Nếu cần sửa, Anh chỉ cần nhắn số thứ tự (ví dụ: 3).'
+  ].join('\n');
+}
+
 module.exports = {
   shouldCancelFlow,
   getNextQuestion,
   parseAnswerValue,
   validatePendingAnswer,
   normalizePayloadBeforeQuestions,
+  resolveSignerInfo,
+  buildPreviewMessage,
   setPending,
   getPending,
   clearPending

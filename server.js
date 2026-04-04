@@ -6,7 +6,7 @@ const { renderQuotePdf } = require('./services/render-quote-pdf');
 const { buildQuoteData } = require('./services/quote-data');
 const { config } = require('./services/config');
 const { createScope } = require('./services/logger');
-const { appendQuoteHistory } = require('./services/history-store');
+const { appendQuoteHistory, saveQuoteSource } = require('./services/history-store');
 const { createRateLimiter } = require('./services/rate-limit');
 const pkg = require('./package.json');
 
@@ -74,13 +74,16 @@ app.post('/api/quote', async (req, res) => {
     fs.mkdirSync(path.dirname(sentPath), { recursive: true });
     fs.copyFileSync(outputPath, sentPath);
 
+    const sourcePath = saveQuoteSource(data.quoteNumber, inputData);
+
     appendQuoteHistory({
       quoteNumber: data.quoteNumber,
       customerName: data.customerName,
       customerReceiver: data.customerReceiver,
       itemCount: Array.isArray(inputData.items) ? inputData.items.length : Array.isArray(inputData.products) ? inputData.products.length : 1,
       total: data.grandTotal,
-      source: req.headers['user-agent'] || 'api'
+      source: req.headers['user-agent'] || 'api',
+      sourcePath
     });
 
     log.info('Đã tạo PDF', {
