@@ -14,7 +14,7 @@
 
     @page {
       size: A4;
-      margin: 8mm 14mm 8mm 14mm;
+      margin: 12mm 14mm 10mm 14mm;
     }
 
     body {
@@ -72,15 +72,16 @@
 
     .company-info {
       flex: 1;
-      font-size: 12px;
-      line-height: 1.4;
+      font-size: 11px;
+      line-height: 1.35;
     }
 
     .company-name {
       font-weight: 700;
       font-size: 13px;
       margin-bottom: 4px;
-      line-height: 1.25;
+      line-height: 1.2;
+      letter-spacing: -0.05px;
     }
 
     .company-details {
@@ -88,25 +89,32 @@
     }
 
     .company-details-row {
-      display: flex;
-      justify-content: space-between;
-      width: 100%;
-      gap: 12px;
+      display: inline-flex;
+      justify-content: flex-start;
+      width: auto;
+      gap: 28px;
+      max-width: 100%;
+    }
+
+    .company-details-row span {
+      white-space: nowrap;
     }
 
     .date-line {
       text-align: right;
       font-style: italic;
-      margin-top: 15px;
-      margin-bottom: 10px;
+      margin-top: 18px;
+      margin-bottom: 18px;
+      font-size: 13px;
     }
 
     .title {
       text-align: center;
-      font-size: 26px;
+      font-size: 24px;
       font-weight: 700;
       letter-spacing: 0.5px;
-      margin: 2px 0 10px;
+      margin: 0 0 8px;
+      line-height: 1.2;
     }
 
     .contact-table {
@@ -142,8 +150,9 @@
       text-align: center;
       font-weight: 700;
       font-style: italic;
-      margin-bottom: 12px;
-      font-size: 14px;
+      margin-bottom: 18px;
+      font-size: 13px;
+      line-height: 1.2;
     }
 
     .intro {
@@ -154,10 +163,17 @@
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 8px;
       margin-top: 10px;
       margin-bottom: 20px;
       font-size: 14px;
+    }
+
+    thead {
+      display: table-header-group;
+    }
+
+    tfoot {
+      display: table-row-group;
     }
 
     th,
@@ -253,11 +269,22 @@
     .sign-name {
       font-weight: 700;
       text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .sign-company {
+      font-size: 12px;
+      letter-spacing: -0.1px;
     }
 
     .sign-title {
-      margin-top: 2px;
-      margin-bottom: 90px;
+      margin-top: 6px;
+      margin-bottom: 110px;
+      font-size: 12px;
+    }
+
+    .sign-name {
+      font-size: 12px;
     }
   </style>
 </head>
@@ -270,13 +297,13 @@
       </div>
       <div class="company-info">
         <div class="company-name">{{companyName}}</div>
-        <div class="company-details">Địa chỉ: {{companyAddress}}</div>
+        <div class="company-details">Địa chỉ Thuế: {{companyAddress}}</div>
         <div class="company-details company-details-row">
           <span>Điện thoại: {{companyPhone}}</span>
-          <span></span>
+          <span>MST: {{companyTaxCode}}</span>
         </div>
         <div class="company-details company-details-row">
-          <span>Website: <u>https://ctcdn.vn/</u></span>
+          <span>Website: <u>{{companyWebsite}}</u></span>
           <span>Email: <u>{{companyEmail}}</u></span>
         </div>
       </div>
@@ -366,15 +393,12 @@
 
     <div class="terms">
       <p>* Hàng hóa mới 100%, xuất xứ như biểu giá trên.</p>
-      <p>* Tiến độ và địa điểm giao nhận: 5-7 ngày kể từ ngày ký hợp đồng (không tính ngày nghỉ và lễ), địa điểm giao
-        nhận: Tại kho của bên mua.</p>
+      <p>* {{deliveryPaymentClause}}</p>
       <p>* Rất mong sự hợp tác của Quý Viễn thông.</p>
-      <p>* Tiến độ và phương thức thanh toán: 30 ngày, kể từ ngày bàn giao nghiệm thu hàng hóa và bên mua nhận được hóa
-        đơn có thuế GTGT, và các giấy tờ liên quan. Thanh toán bằng chuyển khoản vào tài khoản của bên bán.</p>
       <p>* Số tài khoản giao dịch của bên bán: 5650006625 NH TMCP Đầu tư và Phát triển Việt Nam CN Sông Hàn - Đà Nẵng.
       </p>
-      <p>* Thời gian bảo hành: 12 tháng kể từ ngày hàng hóa được nghiệm thu.</p>
-      <p>* Hiệu lực báo giá: 30 ngày kể từ ngày ký.</p>
+      <p>* Thời gian bảo hành: {{warrantyMonthsText}} kể từ ngày hàng hóa được nghiệm thu.</p>
+      <p>* Hiệu lực báo giá: {{quoteValidityDaysText}} kể từ ngày ký.</p>
     </div>
 
     <div class="thanks">TRÂN TRỌNG CÁM ƠN!</div>
@@ -382,9 +406,9 @@
     <div class="sign-wrap">
       <div class="sign-left"></div>
       <div class="sign-right">
-        <div class="sign-company">CÔNG TY CP XÂY LẮP BƯU ĐIỆN MIỀN TRUNG</div>
-        <div class="sign-title">GIÁM ĐỐC KINH DOANH</div>
-        <div class="sign-name">NGUYỄN VĂN ĐẠT</div>
+        <div class="sign-company">CÔNG TY CỔ PHẦN XÂY LẮP BƯU ĐIỆN MIỀN TRUNG</div>
+        <div class="sign-title">{{signerTitle}}</div>
+        <div class="sign-name">{{signerName}}</div>
       </div>
     </div>
   </div>

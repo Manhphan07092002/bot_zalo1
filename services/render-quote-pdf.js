@@ -135,7 +135,9 @@ async function renderQuotePdf({ templatePath, outputPath, data }) {
     companyName: config.companyName,
     companyAddress: config.companyAddress,
     companyPhone: config.companyPhone,
-    companyEmail: config.companyEmail
+    companyEmail: config.companyEmail,
+    companyTaxCode: config.companyTaxCode,
+    companyWebsite: config.companyWebsite
   });
 
   html = injectFontFaces(html);

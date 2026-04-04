@@ -67,9 +67,12 @@ app.post('/api/quote', async (req, res) => {
     const data = buildQuoteData(inputData);
     const fileName = `${data.quoteNumber}-bao-gia-${Date.now()}.pdf`;
     const outputPath = path.resolve(__dirname, 'output', fileName);
+    const sentPath = path.resolve(__dirname, 'output', 'sent', fileName);
     const templatePath = path.resolve(__dirname, 'templates', 'bao-gia-ctc.html');
 
     await renderQuotePdf({ templatePath, outputPath, data });
+    fs.mkdirSync(path.dirname(sentPath), { recursive: true });
+    fs.copyFileSync(outputPath, sentPath);
 
     appendQuoteHistory({
       quoteNumber: data.quoteNumber,

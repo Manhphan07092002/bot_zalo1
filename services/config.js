@@ -53,12 +53,17 @@ const config = {
   companyAddress: process.env.COMPANY_ADDRESS || '50B Nguyễn Du, Phường Hải Châu, Thành phố Đà Nẵng, Việt Nam.',
   companyPhone: process.env.COMPANY_PHONE || '02363.745.745 - 02363.745.746',
   companyEmail: process.env.COMPANY_EMAIL || 'ctcdanang@gmail.com',
+  companyTaxCode: process.env.COMPANY_TAX_CODE || '0400458940',
+  companyWebsite: process.env.COMPANY_WEBSITE || 'https://ctcdn.vn/',
+  timezone: process.env.TIMEZONE || 'Asia/Ho_Chi_Minh',
   defaultProfitRate: toNumber(process.env.DEFAULT_PROFIT_RATE, 12),
   defaultVatPercent: toNumber(process.env.DEFAULT_VAT_PERCENT, 8),
   aiProvider: (process.env.AI_PROVIDER || '').toLowerCase(),
   aiApiKey: process.env.AI_API_KEY || '',
+  aiApiKeys: toList(process.env.AI_API_KEYS),
   aiModel: process.env.AI_MODEL || '',
-  aiEnabled: ['1', 'true', 'yes', 'on'].includes(String(process.env.AI_ENABLED || '').toLowerCase())
+  aiEnabled: ['1', 'true', 'yes', 'on'].includes(String(process.env.AI_ENABLED || '').toLowerCase()),
+  ocrEnabled: ['1', 'true', 'yes', 'on'].includes(String(process.env.OCR_ENABLED || 'true').toLowerCase())
 };
 
 module.exports = { config };

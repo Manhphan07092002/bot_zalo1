@@ -68,13 +68,35 @@ function normalizeNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function roundToNearestThousand(value) {
+  return Math.round(Number(value || 0) / 1000) * 1000;
+}
+
 function getCounterPath() {
   return path.resolve(__dirname, '..', 'data', 'counter.json');
 }
 
+function getNowPartsInTimeZone(timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
+
+  const parts = formatter.formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+  return {
+    day: map.day,
+    month: map.month,
+    year: map.year
+  };
+}
+
 function buildQuoteData(input) {
-  const now = new Date();
+  const nowParts = getNowPartsInTimeZone(config.timezone);
   const customer = input.customer || {};
+  const meta = input.meta || {};
 
   const customerName = input.customerName || customer.name || 'KHÁCH HÀNG';
   const customerReceiver = input.customerReceiver || customer.receiver || customer.contact || '..................';
@@ -97,7 +119,7 @@ function buildQuoteData(input) {
           const quantity = normalizeNumber(p.quantity, 1);
           const costPrice = normalizeNumber(p.costPrice ?? p.unitPrice, 0);
           const profitRate = normalizeNumber(p.profitRate ?? input.profitRate, config.defaultProfitRate);
-          const salePrice = Math.round(costPrice * (1 + profitRate / 100));
+          const salePrice = roundToNearestThousand(costPrice * (1 + profitRate / 100));
 
           return {
             productTitle: p.description || p.productTitle || 'SẢN PHẨM',
@@ -156,6 +178,23 @@ function buildQuoteData(input) {
   const vatAmount = normalizeNumber(input.vatAmount, Math.round((subtotal * vatPercent) / 100));
   const grandTotal = normalizeNumber(input.grandTotal, subtotal + vatAmount);
   const quoteNumber = input.quoteNumber || getNextQuoteNumber(getCounterPath());
+  const deliveryDaysText = String(input.deliveryDaysText ?? meta.deliveryDaysText ?? input.deliveryDays ?? meta.deliveryDays ?? '7-10 ngày');
+  const paymentDaysText = String(input.paymentDaysText ?? meta.paymentDaysText ?? input.paymentDays ?? meta.paymentDays ?? '30 ngày');
+  const warrantyMonthsText = String(input.warrantyMonthsText ?? meta.warrantyMonthsText ?? input.warrantyMonths ?? meta.warrantyMonths ?? '12 tháng');
+  const quoteValidityDaysText = String(input.quoteValidityDaysText ?? meta.quoteValidityDaysText ?? input.quoteValidityDays ?? meta.quoteValidityDays ?? '30 ngày');
+  const deliveryPaymentClause = String(
+    input.deliveryPaymentClause ??
+    meta.deliveryPaymentClause ??
+    `Tiến độ và địa điểm giao nhận, thanh toán: Thời gian giao hàng ${deliveryDaysText} kể từ ngày ký hợp đồng (không tính ngày nghỉ và lễ), địa điểm giao nhận tại kho của bên mua; thời hạn thanh toán ${paymentDaysText} kể từ ngày bàn giao nghiệm thu hàng hóa và bên mua nhận được hóa đơn có thuế GTGT và các giấy tờ liên quan.`
+  ).trim();
+
+  const signerMap = {
+    '1': { title: 'TỔNG GIÁM ĐỐC', name: 'NGUYỄN VĂN DUY' },
+    '2': { title: 'PHÓ TỔNG GIÁM ĐỐC', name: 'DƯƠNG THÁI XUYÊN' },
+    '3': { title: 'GIÁM ĐỐC KINH DOANH', name: 'NGUYỄN VĂN ĐẠT' }
+  };
+  const signerChoice = String(input.signerChoice ?? meta.signerChoice ?? '3');
+  const signer = signerMap[signerChoice] || signerMap['3'];
 
   return {
     quoteNumber,
@@ -163,17 +202,25 @@ function buildQuoteData(input) {
     customerPhone,
     customerEmail,
     customerDepartment,
-    day: String(input.day ?? now.getDate()).padStart(2, '0'),
-    month: String(input.month ?? now.getMonth() + 1).padStart(2, '0'),
-    year: String(input.year ?? now.getFullYear()),
+    day: String(input.day ?? nowParts.day).padStart(2, '0'),
+    month: String(input.month ?? nowParts.month).padStart(2, '0'),
+    year: String(input.year ?? nowParts.year),
     customerName,
     productRows,
     subtotal: input.subtotalText || formatMoney(subtotal),
     vatPercent: String(vatPercent),
     vatAmount: input.vatAmountText || formatMoney(vatAmount),
     grandTotal: input.grandTotalText || formatMoney(grandTotal),
-    amountInWords: input.amountInWords || numberToVietnamese(grandTotal)
+    amountInWords: input.amountInWords || numberToVietnamese(grandTotal),
+    deliveryDaysText,
+    paymentDaysText,
+    warrantyMonthsText,
+    quoteValidityDaysText,
+    signerTitle: signer.title,
+    signerName: signer.name,
+    signerChoice,
+    deliveryPaymentClause
   };
 }
 
-module.exports = { buildQuoteData, formatMoney, numberToVietnamese };
+module.exports = { buildQuoteData, formatMoney, numberToVietnamese, roundToNearestThousand };

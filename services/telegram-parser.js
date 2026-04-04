@@ -34,13 +34,23 @@ function findField(lines, aliases) {
   for (const rawLine of lines) {
     const line = rawLine.trim();
     const idx = line.indexOf(':');
-    if (idx === -1) continue;
+    if (idx !== -1) {
+      const key = normalizeKey(line.slice(0, idx));
+      const value = line.slice(idx + 1).trim();
 
-    const key = normalizeKey(line.slice(0, idx));
-    const value = line.slice(idx + 1).trim();
+      if (aliasSet.has(key)) {
+        return value;
+      }
+    }
 
-    if (aliasSet.has(key)) {
-      return value;
+    const commaSegments = line.split(',').map((s) => s.trim()).filter(Boolean);
+    for (const segment of commaSegments) {
+      const lower = normalizeKey(segment);
+      for (const alias of aliasSet) {
+        if (lower.startsWith(alias + ' ')) {
+          return segment.slice(alias.length).trim();
+        }
+      }
     }
   }
 
@@ -57,36 +67,74 @@ function parseItems(lines) {
     const cleaned = line.replace(/^[-*]\s*/, '').replace(/^\d+[.)]\s*/, '');
     const parts = cleaned.split('|').map((s) => s.trim());
 
-    if (parts.length < 5) continue;
+    if (parts.length >= 5) {
+      const quantity = parseFlexibleNumber(parts[3], 0);
+      const costPrice = parseFlexibleNumber(parts[4], 0);
 
-    const quantity = parseFlexibleNumber(parts[3], 0);
-    const costPrice = parseFlexibleNumber(parts[4], 0);
+      items.push({
+        description: parts[0] || '',
+        origin: parts[1] || '',
+        unit: parts[2] || '',
+        quantity,
+        costPrice,
+        productContent: parts.slice(5).join(' | ')
+      });
+      continue;
+    }
 
-    items.push({
-      description: parts[0] || '',
-      origin: parts[1] || '',
-      unit: parts[2] || '',
-      quantity,
-      costPrice,
-      productContent: parts.slice(5).join(' | ')
-    });
+    const naturalMatch = cleaned.match(/^(.*?)(?:,\s*xuất xứ\s*(.+?))?(?:,\s*đơn vị\s*(.+?))?(?:,\s*số lượng\s*(\d+[\d\.,]*))?(?:,\s*giá nhập\s*([\d\.,]+))$/i);
+    if (naturalMatch) {
+      items.push({
+        description: (naturalMatch[1] || '').trim(),
+        origin: (naturalMatch[2] || '').trim(),
+        unit: (naturalMatch[3] || '').trim(),
+        quantity: parseFlexibleNumber(naturalMatch[4], 0),
+        costPrice: parseFlexibleNumber(naturalMatch[5], 0),
+        productContent: ''
+      });
+    }
   }
 
   return items;
 }
 
+function inferCustomerNameFromFreeText(text) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  const patterns = [
+    /(?:tạo|lam|làm|gửi|gui)?\s*báo\s*giá\s*cho\s+([^\.\n,]+)/i,
+    /(?:tạo|lam|làm)?\s*bảng?\s*chào\s*giá\s*cho\s+([^\.\n,]+)/i,
+    /kính\s*gửi\s+([^\.\n,]+)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) return match[1].trim();
+  }
+
+  return '';
+}
+
+function findGlobalExplicitRate(text, patterns) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) return match[1];
+  }
+  return '';
+}
+
 function parseQuoteRequest(text, defaults = {}) {
   const lines = String(text || '').split(/\r?\n/);
 
-  const customerName = findField(lines, FIELD_ALIASES.customerName);
+  const customerName = findField(lines, FIELD_ALIASES.customerName) || inferCustomerNameFromFreeText(text);
   const customerReceiver = findField(lines, FIELD_ALIASES.customerReceiver);
   const customerDepartment = findField(lines, FIELD_ALIASES.customerDepartment);
   const phone = findField(lines, FIELD_ALIASES.phone);
   const email = findField(lines, FIELD_ALIASES.email);
-  const profitRateRaw = findField(lines, FIELD_ALIASES.profitRate);
-  const vatPercentRaw = findField(lines, FIELD_ALIASES.vatPercent);
+  const profitRateRaw = findField(lines, FIELD_ALIASES.profitRate) || findGlobalExplicitRate(text, [/(?:lãi suất|lãi)\s*[:=]?\s*(\d+(?:[\.,]\d+)?)/i]);
+  const vatPercentRaw = findField(lines, FIELD_ALIASES.vatPercent) || findGlobalExplicitRate(text, [/(?:thuế\s*vat|vat)\s*[:=]?\s*(\d+(?:[\.,]\d+)?)/i]);
 
-  const goodsIndex = lines.findIndex((line) => /^\s*(hang hoa|hàng hóa)\s*:/i.test(line));
+  const goodsIndex = lines.findIndex((line) => /^\s*(hang hoa|hàng hóa|danh sách hàng)\s*:/i.test(line));
   const itemLines = goodsIndex === -1 ? [] : lines.slice(goodsIndex + 1);
   const items = parseItems(itemLines);
 
