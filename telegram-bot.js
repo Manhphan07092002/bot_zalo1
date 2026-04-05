@@ -398,8 +398,19 @@ function attachTelegramUserMeta(payload, msg) {
 }
 
 async function finalizeQuote(chatId, payload, mode) {
+  payload = normalizePayloadBeforeQuestions(payload || {});
+  payload.customer = payload.customer || {};
+  payload.items = Array.isArray(payload.items) ? payload.items : [];
+
   const validationError = validatePayload(payload);
   if (validationError) {
+    log.warn('Không thể xuất PDF do payload chưa hợp lệ', {
+      chatId,
+      parseMode: mode,
+      customerName: payload?.customer?.name || '',
+      itemCount: Array.isArray(payload?.items) ? payload.items.length : 0,
+      validationError
+    });
     await bot.sendMessage(chatId, `Chưa tạo được báo giá. ${validationError}`);
     return;
   }
