@@ -73,6 +73,10 @@ function sortByNewest(entries) {
   return [...entries].sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')));
 }
 
+function isLegacyEntry(entry) {
+  return entry?.legacy === true || entry?.sourceMissing === true;
+}
+
 function dedupeLatestByQuoteNumber(entries) {
   const sorted = sortByNewest(entries);
   const seen = new Set();
@@ -92,15 +96,18 @@ function dedupeLatestByQuoteNumber(entries) {
   return output;
 }
 
-function getRecentQuotes(limit = 10) {
+function getRecentQuotes(limit = 10, options = {}) {
   const history = readJsonSafe(getHistoryPath(), []);
-  return dedupeLatestByQuoteNumber(history).slice(0, Math.max(1, limit));
+  const includeLegacy = options.includeLegacy === true;
+  const filtered = includeLegacy ? history : history.filter((entry) => !isLegacyEntry(entry));
+  return dedupeLatestByQuoteNumber(filtered).slice(0, Math.max(1, limit));
 }
 
-function getQuotesByUser(userId, limit = 10) {
+function getQuotesByUser(userId, limit = 10, options = {}) {
   const history = readJsonSafe(getHistoryPath(), []);
+  const includeLegacy = options.includeLegacy === true;
   return dedupeLatestByQuoteNumber(
-    history.filter((entry) => String(entry.createdBy || '') === String(userId || ''))
+    history.filter((entry) => String(entry.createdBy || '') === String(userId || '') && (includeLegacy || !isLegacyEntry(entry)))
   ).slice(0, Math.max(1, limit));
 }
 
@@ -113,10 +120,13 @@ function normalizeQuoteLookup(value) {
   };
 }
 
-function findQuotesByKeyword(keyword, limit = 10) {
+function findQuotesByKeyword(keyword, limit = 10, options = {}) {
   const lookup = normalizeQuoteLookup(keyword);
   if (!lookup.raw) return [];
-  const history = dedupeLatestByQuoteNumber(readJsonSafe(getHistoryPath(), []));
+  const includeLegacy = options.includeLegacy === true;
+  const history = dedupeLatestByQuoteNumber(
+    readJsonSafe(getHistoryPath(), []).filter((entry) => includeLegacy || !isLegacyEntry(entry))
+  );
   return history.filter((entry) => {
     const quoteNumber = String(entry.quoteNumber || '').padStart(3, '0');
     const haystack = [quoteNumber, entry.customerName, entry.customerReceiver, entry.createdAt]
