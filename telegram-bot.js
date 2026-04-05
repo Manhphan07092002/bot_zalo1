@@ -20,6 +20,16 @@ const {
   getPending,
   clearPending
 } = require('./services/conversation-flow');
+const {
+  shortenItemLabel,
+  buildQuoteActionMenu,
+  buildMainMenu,
+  buildQuotePickKeyboard,
+  formatQuotePickerIntro,
+  formatQuoteSummary,
+  formatEditableItemLine,
+  buildPreviewInlineKeyboard
+} = require('./services/telegram-ui');
 const TelegramBot = require('node-telegram-bot-api');
 
 const execFileAsync = promisify(execFile);
@@ -39,26 +49,6 @@ if (!BOT_TOKEN) {
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 const ADMIN_TELEGRAM_ID = String(config.telegramAdminId || '').trim();
 
-function buildQuoteActionMenu(quoteNumber) {
-  const label = String(quoteNumber || '').padStart(3, '0');
-  return {
-    reply_markup: {
-      inline_keyboard: [
-        [
-          { text: `✏️ Sửa BG ${label}`, callback_data: `quote:edit:${label}` },
-          { text: `👁 Review BG ${label}`, callback_data: `quote:review:${label}` }
-        ],
-        [
-          { text: `📥 Tải PDF BG ${label}`, callback_data: `quote:pdf:${label}` }
-        ],
-        [
-          { text: '⬅️ Quay lại menu chính', callback_data: 'quote:back' }
-        ]
-      ]
-    }
-  };
-}
-
 function isAdminUser(msgOrUserId) {
   if (!ADMIN_TELEGRAM_ID) return false;
   const userId = typeof msgOrUserId === 'object' ? msgOrUserId?.from?.id : msgOrUserId;
@@ -68,7 +58,7 @@ function isAdminUser(msgOrUserId) {
 function ensureAdmin(chatId, userId) {
   if (isAdminUser(userId)) return true;
   log.warn('Từ chối quyền admin', { chatId, userId: String(userId || '') });
-  bot.sendMessage(chatId, 'Chức năng này chỉ dành cho admin.', buildMainMenu(userId));
+  bot.sendMessage(chatId, 'Chức năng này chỉ dành cho admin.', buildMainMenuForUser(userId));
   return false;
 }
 
@@ -86,30 +76,12 @@ async function ensureQuoteAccess(chatId, userId, entry) {
     quoteNumber: String(entry?.quoteNumber || '').padStart(3, '0'),
     ownerId: String(entry?.createdBy || '')
   });
-  await bot.sendMessage(chatId, 'Anh chỉ có quyền xem và thao tác với các báo giá do chính mình tạo.', buildMainMenu(userId));
+  await bot.sendMessage(chatId, 'Anh chỉ có quyền xem và thao tác với các báo giá do chính mình tạo.', buildMainMenuForUser(userId));
   return false;
 }
 
-function buildMainMenu(userId) {
-  const isAdmin = isAdminUser(userId);
-  return {
-    reply_markup: {
-      keyboard: isAdmin
-        ? [
-            ['📝 Tạo báo giá mới', '📂 Báo giá gần đây'],
-            ['📁 Báo giá của tôi', '🔎 Tìm báo giá'],
-            ['❓ Hướng dẫn']
-          ]
-        : [
-            ['📝 Tạo báo giá mới', '📁 Báo giá của tôi'],
-            ['❓ Hướng dẫn']
-          ],
-      resize_keyboard: true,
-      persistent: true,
-      is_persistent: true,
-      one_time_keyboard: false
-    }
-  };
+function buildMainMenuForUser(userId) {
+  return buildMainMenu(isAdminUser(userId));
 }
 
 function isAllowedChat(chatId) {
@@ -168,44 +140,6 @@ async function createQuotePdf(payload) {
   }
 }
 
-function formatQuoteList(entries, title) {
-  if (!entries.length) return `${title}\n\nChưa có dữ liệu.`;
-  return [
-    title,
-    '',
-    ...entries.map((entry, index) => {
-      const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
-      const owner = entry.createdByName || entry.createdByUsername ? ` | ${entry.createdByName || entry.createdByUsername}` : '';
-      return `${index + 1}. BG ${entry.quoteNumber} | ${entry.customerName || 'Chưa rõ'} | ${entry.total || '0'} | ${when}${owner}`;
-    })
-  ].join('\n');
-}
-
-function buildQuotePickKeyboard(entries, pager = {}) {
-  const { page = 0, pageSize = config.quoteListLimit, total = entries.length, mode = 'recent', keyword = '' } = pager;
-  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
-  const navRow = [];
-  if (page > 0) navRow.push({ text: '⬅️ Trước', callback_data: `quote:list:${mode}:${page - 1}:${encodeURIComponent(keyword || '')}` });
-  if (page < totalPages - 1) navRow.push({ text: '➡️ Sau', callback_data: `quote:list:${mode}:${page + 1}:${encodeURIComponent(keyword || '')}` });
-
-  return {
-    inline_keyboard: [
-      ...entries.map((entry) => {
-        const quoteNumber = String(entry.quoteNumber || '').padStart(3, '0');
-        const customerName = shortenItemLabel(entry.customerName || 'Chưa rõ', 22);
-        const totalText = String(entry.total || '0');
-        const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
-        return [{
-          text: `BG ${quoteNumber} • ${customerName} • ${totalText} • ${when}`,
-          callback_data: `quote:open:${quoteNumber}`
-        }];
-      }),
-      ...(navRow.length ? [navRow] : []),
-      [{ text: '⬅️ Quay lại menu chính', callback_data: 'quote:back' }]
-    ]
-  };
-}
-
 async function sendQuotePicker(chatId, allEntries, title, userId = chatId, options = {}) {
   const pageSize = Math.max(1, options.pageSize || config.quoteListLimit || 10);
   const page = Math.max(0, Number(options.page || 0));
@@ -214,20 +148,17 @@ async function sendQuotePicker(chatId, allEntries, title, userId = chatId, optio
   const total = allEntries.length;
   const start = page * pageSize;
   const entries = allEntries.slice(start, start + pageSize);
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const intro = entries.length
-    ? `${title} (trang ${page + 1}/${totalPages})\n\nAnh chọn báo giá bằng nút bên dưới nhé.`
-    : `${title}\n\nChưa có dữ liệu.`;
+  const intro = formatQuotePickerIntro(total, title, page, pageSize);
 
   await bot.sendMessage(chatId, intro, {
     reply_markup: entries.length
       ? buildQuotePickKeyboard(entries, { page, pageSize, total, mode, keyword })
-      : buildMainMenu(userId).reply_markup
+      : buildMainMenuForUser(userId).reply_markup
   });
 }
 
 async function sendMainMenu(chatId, intro, userId = chatId) {
-  await bot.sendMessage(chatId, intro, buildMainMenu(userId));
+  await bot.sendMessage(chatId, intro, buildMainMenuForUser(userId));
 }
 
 function findPdfPathByQuoteNumber(quoteNumber) {
@@ -238,29 +169,6 @@ function findPdfPathByQuoteNumber(quoteNumber) {
   return match ? path.resolve(sentDir, match) : null;
 }
 
-function formatQuoteSummary(entry) {
-  if (!entry) return 'Không tìm thấy báo giá.';
-  const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
-  const isLegacy = entry?.legacy === true || entry?.sourceMissing === true;
-  return [
-    `Thông tin báo giá BG ${String(entry.quoteNumber || '').padStart(3, '0')}:`,
-    '',
-    `• Khách hàng: ${entry.customerName || 'Chưa rõ'}`,
-    `• Người nhận: ${entry.customerReceiver || 'Chưa rõ'}`,
-    `• Số mặt hàng: ${entry.itemCount || 0}`,
-    `• Tổng tiền: ${entry.total || '0'}`,
-    `• Thời gian tạo: ${when}`,
-    ...(isLegacy
-      ? [
-          '',
-          '⚠️ Đây là báo giá legacy / thiếu source dữ liệu gốc.',
-          'Một số chức năng như sửa sâu hoặc khôi phục đầy đủ có thể không dùng được.'
-        ]
-      : []),
-    '',
-    'Anh chọn thao tác ở menu bên dưới để tiếp tục.'
-  ].join('\n');
-}
 
 function buildEditablePayloadFromSource(source, quoteNumber) {
   const payload = normalizePayloadBeforeQuestions(JSON.parse(JSON.stringify(source || {})));
@@ -318,39 +226,6 @@ function applyQuickPreviewEdit(payload, text) {
   return false;
 }
 
-function formatEditableItemLine(item, index) {
-  return [
-    `${index + 1}. ${item?.description || 'Chưa rõ tên'}`,
-    `   • Xuất xứ: ${item?.origin || 'Chưa rõ'}`,
-    `   • Đơn vị: ${item?.unit || 'Chưa rõ'}`,
-    `   • Số lượng: ${Number(item?.quantity || 0).toLocaleString('vi-VN')}`,
-    `   • Giá đầu vào: ${Number(item?.costPrice || 0).toLocaleString('vi-VN')}`
-  ].join('\n');
-}
-
-function shortenItemLabel(text, maxLength = 40) {
-  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
-  if (!normalized) return 'Chưa rõ tên sản phẩm';
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, maxLength - 1).trim()}…`;
-}
-
-function buildPreviewInlineKeyboard() {
-  return {
-    inline_keyboard: [
-      [
-        { text: '✅ Xuất PDF', callback_data: 'preview:ok' }
-      ],
-      [
-        { text: '➕ Thêm sản phẩm', callback_data: 'item:add' },
-        { text: '✏️ Sửa sản phẩm', callback_data: 'item:edit:list' }
-      ],
-      [
-        { text: '❌ Xóa sản phẩm', callback_data: 'item:delete:list' }
-      ]
-    ]
-  };
-}
 
 async function sendItemEditList(chatId, payload, mode, sourceLabel, action = 'edit') {
   const itemLines = (payload.items || []).map((item, index) => formatEditableItemLine(item, index)).join('\n\n');
@@ -701,12 +576,12 @@ bot.on('message', async (msg) => {
 
     if (text.startsWith('/status')) {
       clearPending(chatId);
-      await bot.sendMessage(chatId, 'Bot báo giá CTC đang online bình thường.', buildMainMenu(chatId));
+      await bot.sendMessage(chatId, 'Bot báo giá CTC đang online bình thường.', buildMainMenuForUser(chatId));
       return;
     }
 
     if (text.startsWith('/')) {
-      await bot.sendMessage(chatId, 'Lệnh này hiện chưa hỗ trợ trong bot báo giá. Anh dùng /start hoặc /menu giúp em nhé.', buildMainMenu(chatId));
+      await bot.sendMessage(chatId, 'Lệnh này hiện chưa hỗ trợ trong bot báo giá. Anh dùng /start hoặc /menu giúp em nhé.', buildMainMenuForUser(chatId));
       return;
     }
 
@@ -724,7 +599,7 @@ bot.on('message', async (msg) => {
 
     if (text === '📝 Tạo báo giá mới') {
       clearPending(chatId);
-      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', buildMainMenu(chatId));
+      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', buildMainMenuForUser(chatId));
       return;
     }
 
@@ -749,13 +624,13 @@ bot.on('message', async (msg) => {
       clearPending(chatId);
       if (!ensureAdmin(chatId, msg.from?.id)) return;
       setPending(chatId, { type: 'search-quote' });
-      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenu(chatId));
+      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenuForUser(chatId));
       return;
     }
 
     if (text === '❓ Hướng dẫn') {
       clearPending(chatId);
-      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', buildMainMenu(chatId));
+      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', buildMainMenuForUser(chatId));
       return;
     }
 
@@ -1194,7 +1069,7 @@ bot.on('message', async (msg) => {
     const directQuoteLookup = findQuoteByNumber(text);
     if (directQuoteLookup) {
       if (!isAdminUser(msg.from?.id) && String(directQuoteLookup.createdBy || '') !== String(msg.from?.id || '')) {
-        await bot.sendMessage(chatId, 'Anh chỉ có quyền xem các báo giá do chính mình tạo.', buildMainMenu(chatId));
+        await bot.sendMessage(chatId, 'Anh chỉ có quyền xem các báo giá do chính mình tạo.', buildMainMenuForUser(chatId));
         return;
       }
       setPending(chatId, { type: 'quote-view', quoteNumber: directQuoteLookup.quoteNumber });
@@ -1205,7 +1080,7 @@ bot.on('message', async (msg) => {
     if (text === '🔎 Tìm báo giá') {
       if (!ensureAdmin(chatId, msg.from?.id)) return;
       setPending(chatId, { type: 'search-quote' });
-      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenu(chatId));
+      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenuForUser(chatId));
       return;
     }
 
