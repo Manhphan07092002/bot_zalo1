@@ -166,10 +166,16 @@ function formatQuoteList(entries, title) {
 function buildQuotePickKeyboard(entries) {
   return {
     inline_keyboard: [
-      ...entries.map((entry) => ([{
-        text: `BG ${String(entry.quoteNumber || '').padStart(3, '0')} • ${entry.customerName || 'Chưa rõ'}`,
-        callback_data: `quote:open:${String(entry.quoteNumber || '').padStart(3, '0')}`
-      }])),
+      ...entries.map((entry) => {
+        const quoteNumber = String(entry.quoteNumber || '').padStart(3, '0');
+        const customerName = shortenItemLabel(entry.customerName || 'Chưa rõ', 22);
+        const total = String(entry.total || '0');
+        const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
+        return [{
+          text: `BG ${quoteNumber} • ${customerName} • ${total} • ${when}`,
+          callback_data: `quote:open:${quoteNumber}`
+        }];
+      }),
       [{ text: '⬅️ Quay lại menu chính', callback_data: 'quote:back' }]
     ]
   };
