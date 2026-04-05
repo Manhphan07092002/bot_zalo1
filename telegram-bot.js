@@ -37,7 +37,7 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-const ADMIN_TELEGRAM_ID = '5698283233';
+const ADMIN_TELEGRAM_ID = String(config.telegramAdminId || '').trim();
 
 function buildQuoteActionMenu(quoteNumber) {
   const label = String(quoteNumber || '').padStart(3, '0');
@@ -60,6 +60,7 @@ function buildQuoteActionMenu(quoteNumber) {
 }
 
 function isAdminUser(msgOrUserId) {
+  if (!ADMIN_TELEGRAM_ID) return false;
   const userId = typeof msgOrUserId === 'object' ? msgOrUserId?.from?.id : msgOrUserId;
   return String(userId || '') === ADMIN_TELEGRAM_ID;
 }

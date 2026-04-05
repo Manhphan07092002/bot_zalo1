@@ -44,6 +44,8 @@ const config = {
   apiKey: process.env.API_KEY || '',
   quoteApiUrl: process.env.QUOTE_API_URL || 'http://127.0.0.1:3000/api/quote',
   telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || '',
+  telegramAdminId: process.env.TELEGRAM_ADMIN_ID || '',
+  telegramAdminName: process.env.TELEGRAM_ADMIN_NAME || 'Admin',
   telegramAllowedChatIds: toList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
   rateLimitWindowMs: toNumber(process.env.RATE_LIMIT_WINDOW_MS, 60000),
   rateLimitMax: toNumber(process.env.RATE_LIMIT_MAX, 30),
