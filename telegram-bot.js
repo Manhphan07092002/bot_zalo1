@@ -631,17 +631,17 @@ bot.on('message', async (msg) => {
     if (text === '📂 Báo giá gần đây') {
       clearPending(chatId);
       if (!ensureAdmin(chatId, msg.from?.id)) return;
-      await sendQuotePicker(chatId, getRecentQuotes(10), '10 báo giá gần đây', msg.from?.id);
+      await sendQuotePicker(chatId, getRecentQuotes(config.quoteListLimit), `${config.quoteListLimit} báo giá gần đây`, msg.from?.id);
       return;
     }
 
     if (text === '📁 Báo giá của tôi') {
       clearPending(chatId);
-      let myQuotes = getQuotesByUser(msg.from?.id, 10);
+      let myQuotes = getQuotesByUser(msg.from?.id, config.quoteListLimit);
       if (!myQuotes.length && isAdminUser(msg)) {
-        myQuotes = getRecentQuotes(10);
+        myQuotes = getRecentQuotes(config.quoteListLimit);
       }
-      await sendQuotePicker(chatId, myQuotes, '10 báo giá của Anh gần đây', msg.from?.id);
+      await sendQuotePicker(chatId, myQuotes, `${config.quoteListLimit} báo giá của Anh gần đây`, msg.from?.id);
       return;
     }
 
@@ -725,7 +725,7 @@ bot.on('message', async (msg) => {
           await bot.sendMessage(chatId, formatQuoteSummary(exact), buildQuoteActionMenu(exact.quoteNumber));
           return;
         }
-        const results = findQuotesByKeyword(text, 10);
+        const results = findQuotesByKeyword(text, config.quoteListLimit);
         const scopedResults = isAdminUser(msg.from?.id)
           ? results
           : results.filter((entry) => String(entry.createdBy || '') === String(msg.from?.id || ''));

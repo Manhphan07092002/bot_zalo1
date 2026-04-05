@@ -69,9 +69,39 @@ function appendQuoteHistory(entry) {
   writeJson(historyPath, history.slice(0, 500));
 }
 
+function sortByNewest(entries) {
+  return [...entries].sort((a, b) => String(b?.createdAt || '').localeCompare(String(a?.createdAt || '')));
+}
+
+function dedupeLatestByQuoteNumber(entries) {
+  const sorted = sortByNewest(entries);
+  const seen = new Set();
+  const output = [];
+
+  for (const entry of sorted) {
+    const quoteNumber = String(entry?.quoteNumber || '').padStart(3, '0');
+    if (!quoteNumber) continue;
+    if (seen.has(quoteNumber)) continue;
+    seen.add(quoteNumber);
+    output.push({
+      ...entry,
+      quoteNumber
+    });
+  }
+
+  return output;
+}
+
 function getRecentQuotes(limit = 10) {
   const history = readJsonSafe(getHistoryPath(), []);
-  return history.slice(0, Math.max(1, limit));
+  return dedupeLatestByQuoteNumber(history).slice(0, Math.max(1, limit));
+}
+
+function getQuotesByUser(userId, limit = 10) {
+  const history = readJsonSafe(getHistoryPath(), []);
+  return dedupeLatestByQuoteNumber(
+    history.filter((entry) => String(entry.createdBy || '') === String(userId || ''))
+  ).slice(0, Math.max(1, limit));
 }
 
 function normalizeQuoteLookup(value) {
@@ -86,7 +116,7 @@ function normalizeQuoteLookup(value) {
 function findQuotesByKeyword(keyword, limit = 10) {
   const lookup = normalizeQuoteLookup(keyword);
   if (!lookup.raw) return [];
-  const history = readJsonSafe(getHistoryPath(), []);
+  const history = dedupeLatestByQuoteNumber(readJsonSafe(getHistoryPath(), []));
   return history.filter((entry) => {
     const quoteNumber = String(entry.quoteNumber || '').padStart(3, '0');
     const haystack = [quoteNumber, entry.customerName, entry.customerReceiver, entry.createdAt]
@@ -100,7 +130,7 @@ function findQuotesByKeyword(keyword, limit = 10) {
 function findQuoteByNumber(value) {
   const lookup = normalizeQuoteLookup(value);
   if (!lookup.digits) return null;
-  const history = readJsonSafe(getHistoryPath(), []);
+  const history = dedupeLatestByQuoteNumber(readJsonSafe(getHistoryPath(), []));
   return history.find((entry) => String(entry.quoteNumber || '').padStart(3, '0') === lookup.digits) || null;
 }
 
@@ -119,6 +149,7 @@ module.exports = {
   appendQuoteHistory,
   getNextQuoteNumber,
   getRecentQuotes,
+  getQuotesByUser,
   findQuotesByKeyword,
   findQuoteByNumber,
   saveQuoteSource,

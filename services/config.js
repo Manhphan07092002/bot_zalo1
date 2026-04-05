@@ -47,6 +47,7 @@ const config = {
   telegramAdminId: process.env.TELEGRAM_ADMIN_ID || '',
   telegramAdminName: process.env.TELEGRAM_ADMIN_NAME || 'Admin',
   telegramAllowedChatIds: toList(process.env.TELEGRAM_ALLOWED_CHAT_IDS),
+  quoteListLimit: toNumber(process.env.QUOTE_LIST_LIMIT, 10),
   rateLimitWindowMs: toNumber(process.env.RATE_LIMIT_WINDOW_MS, 60000),
   rateLimitMax: toNumber(process.env.RATE_LIMIT_MAX, 30),
   renderTimeoutMs: toNumber(process.env.RENDER_TIMEOUT_MS, 30000),
