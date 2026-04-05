@@ -163,6 +163,25 @@ function formatQuoteList(entries, title) {
   ].join('\n');
 }
 
+function buildQuotePickKeyboard(entries) {
+  return {
+    inline_keyboard: [
+      ...entries.map((entry) => ([{
+        text: `BG ${String(entry.quoteNumber || '').padStart(3, '0')} • ${entry.customerName || 'Chưa rõ'}`,
+        callback_data: `quote:open:${String(entry.quoteNumber || '').padStart(3, '0')}`
+      }])),
+      [{ text: '⬅️ Quay lại menu chính', callback_data: 'quote:back' }]
+    ]
+  };
+}
+
+async function sendQuotePicker(chatId, entries, title, userId = chatId) {
+  await bot.sendMessage(chatId, formatQuoteList(entries, title), {
+    ...buildMainMenu(userId),
+    reply_markup: buildQuotePickKeyboard(entries)
+  });
+}
+
 async function sendMainMenu(chatId, intro, userId = chatId) {
   await bot.sendMessage(chatId, intro, buildMainMenu(userId));
 }
@@ -486,6 +505,20 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    const quoteOpenMatch = data.match(/^quote:open:(\d{3})$/);
+    if (quoteOpenMatch) {
+      const quoteNumber = quoteOpenMatch[1];
+      const entry = findQuoteByNumber(quoteNumber);
+      if (!(await ensureQuoteAccess(chatId, userId, entry))) {
+        await bot.answerCallbackQuery(query.id, { text: 'Không có quyền truy cập', show_alert: false });
+        return;
+      }
+      setPending(chatId, { type: 'quote-view', quoteNumber });
+      await bot.answerCallbackQuery(query.id, { text: `Đang mở BG ${quoteNumber}` });
+      await bot.sendMessage(chatId, formatQuoteSummary(entry), buildQuoteActionMenu(quoteNumber));
+      return;
+    }
+
     const quoteMatch = data.match(/^quote:(edit|review|pdf):(\d{3})$/);
     if (quoteMatch) {
       const [, action, quoteNumber] = quoteMatch;
@@ -582,7 +615,7 @@ bot.on('message', async (msg) => {
     if (text === '📂 Báo giá gần đây') {
       clearPending(chatId);
       if (!ensureAdmin(chatId, msg.from?.id)) return;
-      await bot.sendMessage(chatId, formatQuoteList(getRecentQuotes(10), '10 báo giá gần đây'), buildMainMenu(chatId));
+      await sendQuotePicker(chatId, getRecentQuotes(10), '10 báo giá gần đây', msg.from?.id);
       return;
     }
 
@@ -592,7 +625,7 @@ bot.on('message', async (msg) => {
       if (!myQuotes.length && isAdminUser(msg)) {
         myQuotes = getRecentQuotes(10);
       }
-      await bot.sendMessage(chatId, formatQuoteList(myQuotes, '10 báo giá của Anh gần đây'), buildMainMenu(chatId));
+      await sendQuotePicker(chatId, myQuotes, '10 báo giá của Anh gần đây', msg.from?.id);
       return;
     }
 
@@ -680,7 +713,7 @@ bot.on('message', async (msg) => {
         const scopedResults = isAdminUser(msg.from?.id)
           ? results
           : results.filter((entry) => String(entry.createdBy || '') === String(msg.from?.id || ''));
-        await bot.sendMessage(chatId, formatQuoteList(scopedResults, `Kết quả tìm cho: ${text}`), buildMainMenu(chatId));
+        await sendQuotePicker(chatId, scopedResults, `Kết quả tìm cho: ${text}`, msg.from?.id);
         return;
       }
 
