@@ -276,6 +276,13 @@ function formatEditableItemLine(item, index) {
   ].join('\n');
 }
 
+function shortenItemLabel(text, maxLength = 40) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return 'Chưa rõ tên sản phẩm';
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1).trim()}…`;
+}
+
 function buildPreviewInlineKeyboard() {
   return {
     inline_keyboard: [
@@ -305,11 +312,11 @@ async function sendItemEditList(chatId, payload, mode, sourceLabel, action = 'ed
     reply_markup: {
       inline_keyboard: action === 'delete'
         ? [
-            ...(payload.items || []).map((item, index) => ([{ text: `❌ Xóa dòng ${index + 1}`, callback_data: `item:delete:${index}` }])),
+            ...(payload.items || []).map((item, index) => ([{ text: `❌ D${index + 1} - ${shortenItemLabel(item?.description)}`, callback_data: `item:delete:${index}` }])),
             [{ text: '⬅️ Quay lại preview', callback_data: 'item:back:preview' }]
           ]
         : [
-            ...(payload.items || []).map((item, index) => ([{ text: `✏️ Sửa dòng ${index + 1}`, callback_data: `item:edit:${index}` }])),
+            ...(payload.items || []).map((item, index) => ([{ text: `✏️ D${index + 1} - ${shortenItemLabel(item?.description)}`, callback_data: `item:edit:${index}` }])),
             [
               { text: '➕ Thêm sản phẩm', callback_data: 'item:add' },
               { text: '⬅️ Quay lại preview', callback_data: 'item:back:preview' }
