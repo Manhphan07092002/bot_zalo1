@@ -181,31 +181,48 @@ function formatQuoteList(entries, title) {
   ].join('\n');
 }
 
-function buildQuotePickKeyboard(entries) {
+function buildQuotePickKeyboard(entries, pager = {}) {
+  const { page = 0, pageSize = config.quoteListLimit, total = entries.length, mode = 'recent', keyword = '' } = pager;
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+  const navRow = [];
+  if (page > 0) navRow.push({ text: '⬅️ Trước', callback_data: `quote:list:${mode}:${page - 1}:${encodeURIComponent(keyword || '')}` });
+  if (page < totalPages - 1) navRow.push({ text: '➡️ Sau', callback_data: `quote:list:${mode}:${page + 1}:${encodeURIComponent(keyword || '')}` });
+
   return {
     inline_keyboard: [
       ...entries.map((entry) => {
         const quoteNumber = String(entry.quoteNumber || '').padStart(3, '0');
         const customerName = shortenItemLabel(entry.customerName || 'Chưa rõ', 22);
-        const total = String(entry.total || '0');
+        const totalText = String(entry.total || '0');
         const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
         return [{
-          text: `BG ${quoteNumber} • ${customerName} • ${total} • ${when}`,
+          text: `BG ${quoteNumber} • ${customerName} • ${totalText} • ${when}`,
           callback_data: `quote:open:${quoteNumber}`
         }];
       }),
+      ...(navRow.length ? [navRow] : []),
       [{ text: '⬅️ Quay lại menu chính', callback_data: 'quote:back' }]
     ]
   };
 }
 
-async function sendQuotePicker(chatId, entries, title, userId = chatId) {
+async function sendQuotePicker(chatId, allEntries, title, userId = chatId, options = {}) {
+  const pageSize = Math.max(1, options.pageSize || config.quoteListLimit || 10);
+  const page = Math.max(0, Number(options.page || 0));
+  const mode = options.mode || 'recent';
+  const keyword = options.keyword || '';
+  const total = allEntries.length;
+  const start = page * pageSize;
+  const entries = allEntries.slice(start, start + pageSize);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const intro = entries.length
-    ? `${title}\n\nAnh chọn báo giá bằng nút bên dưới nhé.`
+    ? `${title} (trang ${page + 1}/${totalPages})\n\nAnh chọn báo giá bằng nút bên dưới nhé.`
     : `${title}\n\nChưa có dữ liệu.`;
 
   await bot.sendMessage(chatId, intro, {
-    reply_markup: entries.length ? buildQuotePickKeyboard(entries) : buildMainMenu(userId).reply_markup
+    reply_markup: entries.length
+      ? buildQuotePickKeyboard(entries, { page, pageSize, total, mode, keyword })
+      : buildMainMenu(userId).reply_markup
   });
 }
 
@@ -564,6 +581,38 @@ bot.on('callback_query', async (query) => {
       return;
     }
 
+    const quoteListMatch = data.match(/^quote:list:(recent|mine|search):(\d+):(.*)$/);
+    if (quoteListMatch) {
+      const [, listMode, pageRaw, keywordEncoded] = quoteListMatch;
+      const page = Number(pageRaw || 0);
+      const keyword = decodeURIComponent(keywordEncoded || '');
+      let entries = [];
+      let title = '';
+
+      if (listMode === 'recent') {
+        if (!ensureAdmin(chatId, userId)) {
+          await bot.answerCallbackQuery(query.id, { text: 'Chức năng này chỉ dành cho admin', show_alert: false });
+          return;
+        }
+        entries = getRecentQuotes(500);
+        title = 'Báo giá gần đây';
+      } else if (listMode === 'mine') {
+        entries = getQuotesByUser(userId, 500);
+        if (!entries.length && isAdminUser(userId)) entries = getRecentQuotes(500);
+        title = 'Báo giá của tôi';
+      } else {
+        const results = findQuotesByKeyword(keyword, 500);
+        entries = isAdminUser(userId)
+          ? results
+          : results.filter((entry) => String(entry.createdBy || '') === String(userId || ''));
+        title = `Kết quả tìm cho: ${keyword}`;
+      }
+
+      await bot.answerCallbackQuery(query.id, { text: `Trang ${page + 1}` });
+      await sendQuotePicker(chatId, entries, title, userId, { page, mode: listMode, keyword });
+      return;
+    }
+
     const quoteOpenMatch = data.match(/^quote:open:(\d{3})$/);
     if (quoteOpenMatch) {
       const quoteNumber = quoteOpenMatch[1];
@@ -682,17 +731,17 @@ bot.on('message', async (msg) => {
     if (text === '📂 Báo giá gần đây') {
       clearPending(chatId);
       if (!ensureAdmin(chatId, msg.from?.id)) return;
-      await sendQuotePicker(chatId, getRecentQuotes(config.quoteListLimit), `${config.quoteListLimit} báo giá gần đây`, msg.from?.id);
+      await sendQuotePicker(chatId, getRecentQuotes(500), 'Báo giá gần đây', msg.from?.id, { page: 0, mode: 'recent' });
       return;
     }
 
     if (text === '📁 Báo giá của tôi') {
       clearPending(chatId);
-      let myQuotes = getQuotesByUser(msg.from?.id, config.quoteListLimit);
+      let myQuotes = getQuotesByUser(msg.from?.id, 500);
       if (!myQuotes.length && isAdminUser(msg)) {
-        myQuotes = getRecentQuotes(config.quoteListLimit);
+        myQuotes = getRecentQuotes(500);
       }
-      await sendQuotePicker(chatId, myQuotes, `${config.quoteListLimit} báo giá của Anh gần đây`, msg.from?.id);
+      await sendQuotePicker(chatId, myQuotes, 'Báo giá của tôi', msg.from?.id, { page: 0, mode: 'mine' });
       return;
     }
 
@@ -777,11 +826,11 @@ bot.on('message', async (msg) => {
           await bot.sendMessage(chatId, formatQuoteSummary(exact), buildQuoteActionMenu(exact.quoteNumber));
           return;
         }
-        const results = findQuotesByKeyword(text, config.quoteListLimit);
+        const results = findQuotesByKeyword(text, 500);
         const scopedResults = isAdminUser(msg.from?.id)
           ? results
           : results.filter((entry) => String(entry.createdBy || '') === String(msg.from?.id || ''));
-        await sendQuotePicker(chatId, scopedResults, `Kết quả tìm cho: ${text}`, msg.from?.id);
+        await sendQuotePicker(chatId, scopedResults, `Kết quả tìm cho: ${text}`, msg.from?.id, { page: 0, mode: 'search', keyword: text });
         return;
       }
 
