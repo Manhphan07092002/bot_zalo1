@@ -21,7 +21,6 @@ const {
   clearPending
 } = require('./services/conversation-flow');
 const {
-  shortenItemLabel,
   buildQuoteActionMenu,
   buildMainMenu,
   buildQuotePickKeyboard,
@@ -30,6 +29,12 @@ const {
   formatEditableItemLine,
   buildPreviewInlineKeyboard
 } = require('./services/telegram-ui');
+const {
+  sendItemEditList,
+  buildAddItemQuestion,
+  buildItemEditFieldState,
+  buildItemEditFieldPrompt
+} = require('./services/item-edit-flow');
 const TelegramBot = require('node-telegram-bot-api');
 
 const execFileAsync = promisify(execFile);
@@ -227,32 +232,6 @@ function applyQuickPreviewEdit(payload, text) {
 }
 
 
-async function sendItemEditList(chatId, payload, mode, sourceLabel, action = 'edit') {
-  const itemLines = (payload.items || []).map((item, index) => formatEditableItemLine(item, index)).join('\n\n');
-  setPending(chatId, {
-    type: action === 'delete' ? 'item-delete-select' : 'item-edit-select',
-    payload,
-    mode,
-    sourceLabel
-  });
-  await bot.sendMessage(chatId, `Danh sách mặt hàng hiện tại:\n\n${itemLines || 'Chưa có mặt hàng.'}`, {
-    reply_markup: {
-      inline_keyboard: action === 'delete'
-        ? [
-            ...(payload.items || []).map((item, index) => ([{ text: `❌ D${index + 1} - ${shortenItemLabel(item?.description)}`, callback_data: `item:delete:${index}` }])),
-            [{ text: '⬅️ Quay lại preview', callback_data: 'item:back:preview' }]
-          ]
-        : [
-            ...(payload.items || []).map((item, index) => ([{ text: `✏️ D${index + 1} - ${shortenItemLabel(item?.description)}`, callback_data: `item:edit:${index}` }])),
-            [
-              { text: '➕ Thêm sản phẩm', callback_data: 'item:add' },
-              { text: '⬅️ Quay lại preview', callback_data: 'item:back:preview' }
-            ]
-          ]
-    }
-  });
-}
-
 bot.onText(/\/start/i, async (msg) => {
   if (!isAllowedChat(msg.chat.id)) {
     await bot.sendMessage(msg.chat.id, 'Chat này chưa được phép sử dụng bot.');
@@ -388,30 +367,20 @@ bot.on('callback_query', async (query) => {
 
     if (data === 'item:add' && pending?.payload) {
       await bot.answerCallbackQuery(query.id, { text: 'Thêm sản phẩm mới' });
-      setPending(chatId, {
-        type: 'question',
-        payload: pending.payload,
-        mode: pending.mode,
-        sourceLabel: pending.sourceLabel,
-        question: {
-          kind: 'item.add.description',
-          index: Array.isArray(pending.payload.items) ? pending.payload.items.length : 0,
-          prompt: 'Anh gửi giúp em tên sản phẩm mới để em thêm dòng nhé.'
-        }
-      });
+      setPending(chatId, buildAddItemQuestion(pending.payload, pending));
       await bot.sendMessage(chatId, 'Anh gửi giúp em tên sản phẩm mới để em thêm dòng nhé.');
       return;
     }
 
     if (data === 'item:edit:list' && pending?.payload) {
       await bot.answerCallbackQuery(query.id, { text: 'Chọn dòng cần sửa' });
-      await sendItemEditList(chatId, pending.payload, pending.mode, pending.sourceLabel, 'edit');
+      await sendItemEditList({ bot, setPending, chatId, payload: pending.payload, mode: pending.mode, sourceLabel: pending.sourceLabel, action: 'edit' });
       return;
     }
 
     if (data === 'item:delete:list' && pending?.payload) {
       await bot.answerCallbackQuery(query.id, { text: 'Chọn dòng cần xóa' });
-      await sendItemEditList(chatId, pending.payload, pending.mode, pending.sourceLabel, 'delete');
+      await sendItemEditList({ bot, setPending, chatId, payload: pending.payload, mode: pending.mode, sourceLabel: pending.sourceLabel, action: 'delete' });
       return;
     }
 
@@ -423,15 +392,8 @@ bot.on('callback_query', async (query) => {
         return;
       }
       await bot.answerCallbackQuery(query.id, { text: `Đang sửa dòng ${itemIndex + 1}` });
-      setPending(chatId, {
-        type: 'item-edit-field',
-        payload: pending.payload,
-        mode: pending.mode,
-        sourceLabel: pending.sourceLabel,
-        itemIndex
-      });
-      const item = pending.payload.items[itemIndex];
-      await bot.sendMessage(chatId, `Anh đang sửa dòng ${itemIndex + 1}:\n${formatEditableItemLine(item, itemIndex)}\n\nAnh muốn sửa gì?\n1. Tên sản phẩm\n2. Giá đầu vào\n3. Số lượng\n4. Đơn vị\n5. Xuất xứ`);
+      setPending(chatId, buildItemEditFieldState(pending.payload, pending, itemIndex));
+      await bot.sendMessage(chatId, buildItemEditFieldPrompt(pending.payload, itemIndex));
       return;
     }
 
@@ -869,7 +831,7 @@ bot.on('message', async (msg) => {
         }
 
         if (trimmed === '6') {
-          await sendItemEditList(chatId, pending.payload, pending.mode, pending.sourceLabel);
+          await sendItemEditList({ bot, setPending, chatId, payload: pending.payload, mode: pending.mode, sourceLabel: pending.sourceLabel, action: 'edit' });
           return;
         }
 
