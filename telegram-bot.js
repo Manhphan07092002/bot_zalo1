@@ -224,6 +224,7 @@ function findPdfPathByQuoteNumber(quoteNumber) {
 function formatQuoteSummary(entry) {
   if (!entry) return 'Không tìm thấy báo giá.';
   const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
+  const isLegacy = entry?.legacy === true || entry?.sourceMissing === true;
   return [
     `Thông tin báo giá BG ${String(entry.quoteNumber || '').padStart(3, '0')}:`,
     '',
@@ -232,6 +233,13 @@ function formatQuoteSummary(entry) {
     `• Số mặt hàng: ${entry.itemCount || 0}`,
     `• Tổng tiền: ${entry.total || '0'}`,
     `• Thời gian tạo: ${when}`,
+    ...(isLegacy
+      ? [
+          '',
+          '⚠️ Đây là báo giá legacy / thiếu source dữ liệu gốc.',
+          'Một số chức năng như sửa sâu hoặc khôi phục đầy đủ có thể không dùng được.'
+        ]
+      : []),
     '',
     'Anh chọn thao tác ở menu bên dưới để tiếp tục.'
   ].join('\n');
