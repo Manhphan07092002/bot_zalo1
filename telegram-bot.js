@@ -67,6 +67,7 @@ function isAdminUser(msgOrUserId) {
 
 function ensureAdmin(chatId, userId) {
   if (isAdminUser(userId)) return true;
+  log.warn('Từ chối quyền admin', { chatId, userId: String(userId || '') });
   bot.sendMessage(chatId, 'Chức năng này chỉ dành cho admin.', buildMainMenu(userId));
   return false;
 }
@@ -79,6 +80,12 @@ function canAccessQuote(userId, entry) {
 
 async function ensureQuoteAccess(chatId, userId, entry) {
   if (canAccessQuote(userId, entry)) return true;
+  log.warn('Từ chối truy cập báo giá', {
+    chatId,
+    userId: String(userId || ''),
+    quoteNumber: String(entry?.quoteNumber || '').padStart(3, '0'),
+    ownerId: String(entry?.createdBy || '')
+  });
   await bot.sendMessage(chatId, 'Anh chỉ có quyền xem và thao tác với các báo giá do chính mình tạo.', buildMainMenu(userId));
   return false;
 }
@@ -113,8 +120,15 @@ function isAllowedChat(chatId) {
 async function createQuotePdf(payload) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.renderTimeoutMs);
+  const startedAt = Date.now();
 
   try {
+    log.info('Gọi API tạo báo giá', {
+      customerName: payload?.customer?.name || '',
+      itemCount: Array.isArray(payload?.items) ? payload.items.length : 0,
+      profitRate: payload?.profitRate,
+      vatPercent: payload?.vatPercent
+    });
     const res = await fetch(config.quoteApiUrl, {
       method: 'POST',
       headers: {
@@ -144,6 +158,10 @@ async function createQuotePdf(payload) {
     const fileName = match ? match[1] : 'bao-gia-ctc.pdf';
 
     const arrayBuffer = await res.arrayBuffer();
+    log.info('API tạo báo giá thành công', {
+      fileName,
+      durationMs: Date.now() - startedAt
+    });
     return { buffer: Buffer.from(arrayBuffer), fileName };
   } finally {
     clearTimeout(timeout);
@@ -437,6 +455,12 @@ bot.on('callback_query', async (query) => {
   try {
     const pending = getPending(chatId);
     const userId = query.from?.id;
+    log.info('Nhận callback Telegram', {
+      chatId,
+      userId: String(userId || ''),
+      callback: data,
+      pendingType: pending?.type || ''
+    });
 
     if (data === 'preview:ok' && pending?.type === 'preview') {
       clearPending(chatId);
@@ -590,6 +614,14 @@ bot.on('message', async (msg) => {
   const text = (msg.text || msg.caption || '').trim();
 
   try {
+    log.info('Nhận message Telegram', {
+      chatId,
+      userId: String(msg?.from?.id || ''),
+      username: msg?.from?.username || '',
+      hasPhoto: Boolean(msg?.photo?.length),
+      hasCaption: Boolean(msg?.caption),
+      textPreview: text.slice(0, 120)
+    });
     if (!text && !msg.photo) return;
     if (text.startsWith('/start')) return;
 
@@ -671,6 +703,7 @@ bot.on('message', async (msg) => {
     }
 
     if (!rateLimit(String(chatId))) {
+      log.warn('Bị rate limit Telegram', { chatId, userId: String(msg?.from?.id || '') });
       await bot.sendMessage(chatId, 'Anh gửi hơi nhanh, vui lòng chờ một chút rồi thử lại.');
       return;
     }
@@ -1130,9 +1163,19 @@ bot.on('message', async (msg) => {
       imageBuffer = fs.readFileSync(processedImagePath);
     }
 
+    const parseStartedAt = Date.now();
     const { payload, mode } = await routeInput({ text, imageBuffer, mimeType: 'image/jpeg' }, {
       defaultProfitRate: config.defaultProfitRate,
       defaultVatPercent: config.defaultVatPercent
+    });
+
+    log.info('Phân tích đầu vào thành công', {
+      chatId,
+      userId: String(msg?.from?.id || ''),
+      mode,
+      durationMs: Date.now() - parseStartedAt,
+      customerName: payload?.customer?.name || '',
+      itemCount: Array.isArray(payload?.items) ? payload.items.length : 0
     });
 
     attachTelegramUserMeta(payload, msg);
@@ -1142,7 +1185,12 @@ bot.on('message', async (msg) => {
 
     await continueWithPayload(chatId, payload, mode, imageBuffer ? 'ảnh' : 'text');
   } catch (err) {
-    log.error('Lỗi bot Telegram', err.message);
+    log.error('Lỗi bot Telegram', {
+      chatId,
+      userId: String(msg?.from?.id || ''),
+      error: err.message,
+      stack: err?.stack || ''
+    });
     try {
       const msg = String(err?.message || '');
       if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.toLowerCase().includes('quota')) {

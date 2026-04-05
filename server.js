@@ -33,12 +33,14 @@ app.use(express.json({ limit: '1mb' }));
 
 app.use((req, res, next) => {
   if (!rateLimit(req.ip || 'local')) {
+    log.warn('API bị rate limit', { ip: req.ip || 'local', path: req.path });
     return res.status(429).json({ error: 'Quá nhiều yêu cầu, vui lòng thử lại sau.' });
   }
 
   if (config.apiKey && req.path === '/api/quote') {
     const incomingApiKey = req.headers['x-api-key'];
     if (incomingApiKey !== config.apiKey) {
+      log.warn('API key không hợp lệ', { ip: req.ip || 'local', path: req.path });
       return res.status(401).json({ error: 'Thiếu hoặc sai API key.' });
     }
   }
@@ -61,8 +63,17 @@ app.post('/api/quote', async (req, res) => {
     const inputData = req.body;
 
     if (!inputData || Object.keys(inputData).length === 0) {
+      log.warn('API quote nhận payload rỗng', { ip: req.ip || 'local' });
       return res.status(400).json({ error: 'Payload không hợp lệ' });
     }
+
+    log.info('API quote bắt đầu xử lý', {
+      ip: req.ip || 'local',
+      createdBy: inputData?.meta?.createdBy || '',
+      createdByName: inputData?.meta?.createdByName || '',
+      customerName: inputData?.customer?.name || inputData?.customerName || '',
+      itemCount: Array.isArray(inputData?.items) ? inputData.items.length : Array.isArray(inputData?.products) ? inputData.products.length : 1
+    });
 
     const data = buildQuoteData(inputData);
     const fileName = `${data.quoteNumber}-bao-gia-${Date.now()}.pdf`;
@@ -83,7 +94,10 @@ app.post('/api/quote', async (req, res) => {
       itemCount: Array.isArray(inputData.items) ? inputData.items.length : Array.isArray(inputData.products) ? inputData.products.length : 1,
       total: data.grandTotal,
       source: req.headers['user-agent'] || 'api',
-      sourcePath
+      sourcePath,
+      createdBy: inputData?.meta?.createdBy || '',
+      createdByName: inputData?.meta?.createdByName || '',
+      createdByUsername: inputData?.meta?.createdByUsername || ''
     });
 
     log.info('Đã tạo PDF', {
@@ -104,7 +118,11 @@ app.post('/api/quote', async (req, res) => {
       });
     });
   } catch (err) {
-    log.error('Lỗi tạo API báo giá', err.message);
+    log.error('Lỗi tạo API báo giá', {
+      error: err.message,
+      stack: err?.stack || '',
+      durationMs: Date.now() - startedAt
+    });
     res.status(500).json({ error: 'Lỗi server khi tạo báo giá', details: err.message });
   }
 });
