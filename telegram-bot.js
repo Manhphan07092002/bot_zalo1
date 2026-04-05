@@ -176,9 +176,12 @@ function buildQuotePickKeyboard(entries) {
 }
 
 async function sendQuotePicker(chatId, entries, title, userId = chatId) {
-  await bot.sendMessage(chatId, formatQuoteList(entries, title), {
-    ...buildMainMenu(userId),
-    reply_markup: buildQuotePickKeyboard(entries)
+  const intro = entries.length
+    ? `${title}\n\nAnh chọn báo giá bằng nút bên dưới nhé.`
+    : `${title}\n\nChưa có dữ liệu.`;
+
+  await bot.sendMessage(chatId, intro, {
+    reply_markup: entries.length ? buildQuotePickKeyboard(entries) : buildMainMenu(userId).reply_markup
   });
 }
 
