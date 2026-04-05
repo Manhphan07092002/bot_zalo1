@@ -64,7 +64,7 @@ function getNextQuestion(payload) {
 
 function parseAnswerValue(kind, text) {
   const trimmed = String(text || '').trim();
-  if (kind === 'customer.name' || kind === 'item.unit') return trimmed;
+  if ((kind && kind.startsWith('customer.')) || kind === 'item.unit' || kind === 'item.description') return trimmed;
   if (kind && kind.startsWith('meta.')) return trimmed;
   const num = Number(trimmed.replace(/[^\d.-]/g, ''));
   return Number.isFinite(num) ? num : trimmed;
@@ -74,9 +74,23 @@ function validatePendingAnswer(question, text) {
   const trimmed = String(text || '').trim();
   switch (question?.kind) {
     case 'customer.name': return trimmed ? null : 'Tên khách hàng chưa hợp lệ. Anh nhập lại giúp em nhé.';
+    case 'customer.receiver': return trimmed ? null : 'Người nhận chưa hợp lệ. Anh nhập lại giúp em nhé.';
+    case 'customer.department': return trimmed ? null : 'Bộ phận chưa hợp lệ. Anh nhập lại giúp em nhé.';
+    case 'customer.phone': return trimmed ? null : 'Số điện thoại chưa hợp lệ. Anh nhập lại giúp em nhé.';
+    case 'customer.email': return trimmed ? null : 'Email chưa hợp lệ. Anh nhập lại giúp em nhé.';
+    case 'item.description':
+    case 'item.origin':
+    case 'item.add.description':
+    case 'item.add.origin':
+    case 'item.add.unit':
+      return trimmed ? null : 'Thông tin mặt hàng chưa hợp lệ. Anh nhập lại giúp em nhé.';
     case 'item.unit': return trimmed ? null : 'Đơn vị tính chưa hợp lệ. Anh nhập lại giúp em nhé.';
-    case 'item.quantity': return Number(trimmed.replace(/[^\d.-]/g, '')) > 0 ? null : 'Số lượng chưa hợp lệ. Anh nhập lại giúp em bằng số nhé.';
-    case 'item.costPrice': return Number(trimmed.replace(/[^\d.-]/g, '')) > 0 ? null : 'Giá nhập chưa hợp lệ. Anh nhập lại giúp em bằng số nhé.';
+    case 'item.quantity':
+    case 'item.add.quantity':
+      return Number(trimmed.replace(/[^\d.-]/g, '')) > 0 ? null : 'Số lượng chưa hợp lệ. Anh nhập lại giúp em bằng số nhé.';
+    case 'item.costPrice':
+    case 'item.add.costPrice':
+      return Number(trimmed.replace(/[^\d.-]/g, '')) > 0 ? null : 'Giá nhập chưa hợp lệ. Anh nhập lại giúp em bằng số nhé.';
     case 'profitRate': return Number(trimmed.replace(/[^\d.-]/g, '')) > 0 ? null : 'Lãi suất chưa hợp lệ. Anh nhập lại giúp em bằng số phần trăm nhé.';
     case 'vatPercent': return Number(trimmed.replace(/[^\d.-]/g, '')) >= 0 ? null : 'Thuế VAT chưa hợp lệ. Anh nhập lại giúp em bằng số phần trăm nhé.';
     case 'meta.signerChoice':
@@ -130,14 +144,20 @@ function buildPreviewMessage(payload) {
     'Em gửi Anh bản xem trước trước khi xuất PDF:',
     '',
     `1. Khách hàng: ${customerName}`,
-    `2. Số mặt hàng: ${itemCount}`,
-    `3. Lãi suất: ${profitRate}%`,
-    `4. VAT: ${vatPercent}%`,
-    `5. Người ký: ${signer.title} - ${signer.name}`,
-    `6. Điều khoản chính: ${terms}`,
+    `2. Người nhận: ${payload?.customer?.receiver || 'Chưa rõ'}`,
+    `3. Bộ phận: ${payload?.customer?.department || 'Chưa rõ'}`,
+    `4. Điện thoại: ${payload?.customer?.phone || 'Chưa rõ'}`,
+    `5. Email: ${payload?.customer?.email || 'Chưa rõ'}`,
+    `6. Số mặt hàng: ${itemCount}`,
+    `7. Lãi suất: ${profitRate}%`,
+    `8. VAT: ${vatPercent}%`,
+    `9. Người ký: ${signer.title} - ${signer.name}`,
+    `10. Điều khoản chính: ${terms}`,
+    `11. Bảo hành: ${meta.warrantyMonthsText || '12 tháng'}`,
+    `12. Hiệu lực báo giá: ${meta.quoteValidityDaysText || '30 ngày'}`,
     '',
     'Nếu đúng rồi, Anh trả lời: ok',
-    'Nếu cần sửa, Anh chỉ cần nhắn số thứ tự (ví dụ: 3).'
+    'Nếu cần sửa, Anh chỉ cần nhắn số thứ tự (ví dụ: 7).'
   ].join('\n');
 }
 

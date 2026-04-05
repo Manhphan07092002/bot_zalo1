@@ -8,7 +8,7 @@ const { createScope } = require('./services/logger');
 const { validatePayload } = require('./services/telegram-parser');
 const { routeInput } = require('./services/input-router');
 const { createRateLimiter } = require('./services/rate-limit');
-const { getRecentQuotes, findQuotesByKeyword, findQuoteByNumber, getQuoteSource } = require('./services/history-store');
+const { getRecentQuotes, getQuotesByUser, findQuotesByKeyword, findQuoteByNumber, getQuoteSource } = require('./services/history-store');
 const {
   shouldCancelFlow,
   getNextQuestion,
@@ -37,6 +37,7 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+const ADMIN_TELEGRAM_ID = '5698283233';
 
 function buildQuoteActionMenu(quoteNumber) {
   const label = String(quoteNumber || '').padStart(3, '0');
@@ -58,16 +59,48 @@ function buildQuoteActionMenu(quoteNumber) {
   };
 }
 
-const mainMenu = {
-  reply_markup: {
-    keyboard: [
-      ['📝 Tạo báo giá mới', '📂 Báo giá gần đây'],
-      ['🔎 Tìm báo giá', '❓ Hướng dẫn']
-    ],
-    resize_keyboard: true,
-    persistent: true
-  }
-};
+function isAdminUser(msgOrUserId) {
+  const userId = typeof msgOrUserId === 'object' ? msgOrUserId?.from?.id : msgOrUserId;
+  return String(userId || '') === ADMIN_TELEGRAM_ID;
+}
+
+function ensureAdmin(chatId, userId) {
+  if (isAdminUser(userId)) return true;
+  bot.sendMessage(chatId, 'Chức năng này chỉ dành cho admin.', buildMainMenu(userId));
+  return false;
+}
+
+function canAccessQuote(userId, entry) {
+  if (!entry) return false;
+  if (isAdminUser(userId)) return true;
+  return String(entry.createdBy || '') === String(userId || '');
+}
+
+async function ensureQuoteAccess(chatId, userId, entry) {
+  if (canAccessQuote(userId, entry)) return true;
+  await bot.sendMessage(chatId, 'Anh chỉ có quyền xem và thao tác với các báo giá do chính mình tạo.', buildMainMenu(userId));
+  return false;
+}
+
+function buildMainMenu(userId) {
+  const isAdmin = isAdminUser(userId);
+  return {
+    reply_markup: {
+      keyboard: isAdmin
+        ? [
+            ['📝 Tạo báo giá mới', '📂 Báo giá gần đây'],
+            ['📁 Báo giá của tôi', '🔎 Tìm báo giá'],
+            ['❓ Hướng dẫn']
+          ]
+        : [
+            ['📝 Tạo báo giá mới', '📁 Báo giá của tôi'],
+            ['❓ Hướng dẫn']
+          ],
+      resize_keyboard: true,
+      persistent: true
+    }
+  };
+}
 
 function isAllowedChat(chatId) {
   if (!config.telegramAllowedChatIds.length) return true;
@@ -121,13 +154,14 @@ function formatQuoteList(entries, title) {
     '',
     ...entries.map((entry, index) => {
       const when = String(entry.createdAt || '').replace('T', ' ').slice(0, 16);
-      return `${index + 1}. BG ${entry.quoteNumber} | ${entry.customerName || 'Chưa rõ'} | ${entry.total || '0'} | ${when}`;
+      const owner = entry.createdByName || entry.createdByUsername ? ` | ${entry.createdByName || entry.createdByUsername}` : '';
+      return `${index + 1}. BG ${entry.quoteNumber} | ${entry.customerName || 'Chưa rõ'} | ${entry.total || '0'} | ${when}${owner}`;
     })
   ].join('\n');
 }
 
-async function sendMainMenu(chatId, intro) {
-  await bot.sendMessage(chatId, intro, mainMenu);
+async function sendMainMenu(chatId, intro, userId = chatId) {
+  await bot.sendMessage(chatId, intro, buildMainMenu(userId));
 }
 
 function findPdfPathByQuoteNumber(quoteNumber) {
@@ -210,6 +244,30 @@ function applyQuickPreviewEdit(payload, text) {
   return false;
 }
 
+function formatEditableItemLine(item, index) {
+  return [
+    `${index + 1}. ${item?.description || 'Chưa rõ tên'}`,
+    `   • Xuất xứ: ${item?.origin || 'Chưa rõ'}`,
+    `   • Đơn vị: ${item?.unit || 'Chưa rõ'}`,
+    `   • Số lượng: ${Number(item?.quantity || 0).toLocaleString('vi-VN')}`,
+    `   • Giá đầu vào: ${Number(item?.costPrice || 0).toLocaleString('vi-VN')}`
+  ].join('\n');
+}
+
+async function sendItemEditList(chatId, payload, mode, sourceLabel) {
+  const itemLines = (payload.items || []).map((item, index) => formatEditableItemLine(item, index)).join('\n\n');
+  setPending(chatId, {
+    type: 'item-edit-select',
+    payload,
+    mode,
+    sourceLabel
+  });
+  await bot.sendMessage(
+    chatId,
+    `Danh sách mặt hàng hiện tại:\n\n${itemLines || 'Chưa có mặt hàng.'}\n\nAnh chọn số dòng cần sửa (ví dụ: 1).\nHoặc nhắn:\n+ thêm\n+ xóa 1`
+  );
+}
+
 bot.onText(/\/start/i, async (msg) => {
   if (!isAllowedChat(msg.chat.id)) {
     await bot.sendMessage(msg.chat.id, 'Chat này chưa được phép sử dụng bot.');
@@ -244,6 +302,14 @@ async function preprocessImage(inputPath) {
     maxBuffer: 1024 * 1024 * 4
   });
   return outputPath;
+}
+
+function attachTelegramUserMeta(payload, msg) {
+  payload.meta = payload.meta || {};
+  payload.meta.createdBy = String(msg?.from?.id || '');
+  payload.meta.createdByName = [msg?.from?.first_name, msg?.from?.last_name].filter(Boolean).join(' ').trim() || msg?.from?.username || '';
+  payload.meta.createdByUsername = msg?.from?.username || '';
+  return payload;
 }
 
 async function finalizeQuote(chatId, payload, mode) {
@@ -309,6 +375,7 @@ bot.on('callback_query', async (query) => {
 
   try {
     const pending = getPending(chatId);
+    const userId = query.from?.id;
 
     if (data === 'preview:ok' && pending?.type === 'preview') {
       clearPending(chatId);
@@ -329,9 +396,15 @@ bot.on('callback_query', async (query) => {
       const [, action, quoteNumber] = quoteMatch;
       setPending(chatId, { type: 'quote-view', quoteNumber });
 
+      const entry = findQuoteByNumber(quoteNumber);
+      if (!(await ensureQuoteAccess(chatId, userId, entry))) {
+        await bot.answerCallbackQuery(query.id, { text: 'Không có quyền truy cập', show_alert: false });
+        return;
+      }
+
       if (action === 'review') {
         await bot.answerCallbackQuery(query.id, { text: `Đang mở BG ${quoteNumber}` });
-        await bot.sendMessage(chatId, formatQuoteSummary(findQuoteByNumber(quoteNumber)), buildQuoteActionMenu(quoteNumber));
+        await bot.sendMessage(chatId, formatQuoteSummary(entry), buildQuoteActionMenu(quoteNumber));
         return;
       }
 
@@ -384,12 +457,12 @@ bot.on('message', async (msg) => {
 
     if (text.startsWith('/status')) {
       clearPending(chatId);
-      await bot.sendMessage(chatId, 'Bot báo giá CTC đang online bình thường.', mainMenu);
+      await bot.sendMessage(chatId, 'Bot báo giá CTC đang online bình thường.', buildMainMenu(chatId));
       return;
     }
 
     if (text.startsWith('/')) {
-      await bot.sendMessage(chatId, 'Lệnh này hiện chưa hỗ trợ trong bot báo giá. Anh dùng /start hoặc /menu giúp em nhé.', mainMenu);
+      await bot.sendMessage(chatId, 'Lệnh này hiện chưa hỗ trợ trong bot báo giá. Anh dùng /start hoặc /menu giúp em nhé.', buildMainMenu(chatId));
       return;
     }
 
@@ -407,26 +480,37 @@ bot.on('message', async (msg) => {
 
     if (text === '📝 Tạo báo giá mới') {
       clearPending(chatId);
-      await bot.sendMessage(chatId, 'Anh gửi nội dung báo giá dạng text, ảnh hoặc ảnh + caption để em xử lý nhé.', mainMenu);
+      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', buildMainMenu(chatId));
       return;
     }
 
     if (text === '📂 Báo giá gần đây') {
       clearPending(chatId);
-      await bot.sendMessage(chatId, formatQuoteList(getRecentQuotes(10), '10 báo giá gần đây'), mainMenu);
+      if (!ensureAdmin(chatId, msg.from?.id)) return;
+      await bot.sendMessage(chatId, formatQuoteList(getRecentQuotes(10), '10 báo giá gần đây'), buildMainMenu(chatId));
+      return;
+    }
+
+    if (text === '📁 Báo giá của tôi') {
+      clearPending(chatId);
+      let myQuotes = getQuotesByUser(msg.from?.id, 10);
+      if (!myQuotes.length && isAdminUser(msg)) {
+        myQuotes = getRecentQuotes(10);
+      }
+      await bot.sendMessage(chatId, formatQuoteList(myQuotes, '10 báo giá của Anh gần đây'), buildMainMenu(chatId));
       return;
     }
 
     if (text === '🔎 Tìm báo giá') {
       clearPending(chatId);
       setPending(chatId, { type: 'search-quote' });
-      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', mainMenu);
+      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenu(chatId));
       return;
     }
 
     if (text === '❓ Hướng dẫn') {
       clearPending(chatId);
-      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', mainMenu);
+      await bot.sendMessage(chatId, 'Anh nhắn /start, /menu, hi hoặc hello để bắt đầu nhé.\nHoặc Anh gửi luôn nội dung báo giá, ảnh, hoặc ảnh + caption, em sẽ xử lý.\nKhi bot hiện bản xem trước, Anh nhắn ok là em xuất PDF.', buildMainMenu(chatId));
       return;
     }
 
@@ -456,11 +540,14 @@ bot.on('message', async (msg) => {
 
       if (pending.type === 'quote-view' && /^👁\s*review (báo giá|bg)( \d+)?$|^review$|^xem$/i.test(text.trim())) {
         const entry = findQuoteByNumber(pending.quoteNumber);
+        if (!(await ensureQuoteAccess(chatId, msg.from?.id, entry))) return;
         await bot.sendMessage(chatId, formatQuoteSummary(entry), buildQuoteActionMenu(pending.quoteNumber));
         return;
       }
 
       if (pending.type === 'quote-view' && /^📥\s*tải pdf( bg \d+)?$|^tải pdf$|^pdf$/i.test(text.trim())) {
+        const entry = findQuoteByNumber(pending.quoteNumber);
+        if (!(await ensureQuoteAccess(chatId, msg.from?.id, entry))) return;
         const pdfPath = findPdfPathByQuoteNumber(pending.quoteNumber);
         if (!pdfPath) {
           await bot.sendMessage(chatId, 'Em chưa tìm thấy file PDF của báo giá này.', buildQuoteActionMenu(pending.quoteNumber));
@@ -471,6 +558,8 @@ bot.on('message', async (msg) => {
       }
 
       if (pending.type === 'quote-view' && /^✏️\s*sửa (báo giá|bg)( \d+)?$|^sửa$/i.test(text.trim())) {
+        const entry = findQuoteByNumber(pending.quoteNumber);
+        if (!(await ensureQuoteAccess(chatId, msg.from?.id, entry))) return;
         const source = getQuoteSource(pending.quoteNumber);
         if (!source) {
           clearPending(chatId);
@@ -486,12 +575,140 @@ bot.on('message', async (msg) => {
         const exact = findQuoteByNumber(text);
         clearPending(chatId);
         if (exact) {
+          if (!(await ensureQuoteAccess(chatId, msg.from?.id, exact))) return;
           setPending(chatId, { type: 'quote-view', quoteNumber: exact.quoteNumber });
           await bot.sendMessage(chatId, formatQuoteSummary(exact), buildQuoteActionMenu(exact.quoteNumber));
           return;
         }
         const results = findQuotesByKeyword(text, 10);
-        await bot.sendMessage(chatId, formatQuoteList(results, `Kết quả tìm cho: ${text}`), mainMenu);
+        const scopedResults = isAdminUser(msg.from?.id)
+          ? results
+          : results.filter((entry) => String(entry.createdBy || '') === String(msg.from?.id || ''));
+        await bot.sendMessage(chatId, formatQuoteList(scopedResults, `Kết quả tìm cho: ${text}`), buildMainMenu(chatId));
+        return;
+      }
+
+      if (pending.type === 'item-edit-select') {
+        const trimmed = text.trim();
+        const addMatch = trimmed.match(/^thêm(?:\s*[:\-]?\s*(.+))?$/i);
+        const deleteMatch = trimmed.match(/^(xóa|xoa|xoá)\s+(\d+)$/i);
+
+        if (addMatch) {
+          const description = (addMatch[1] || '').trim();
+          const nextIndex = Array.isArray(pending.payload?.items) ? pending.payload.items.length : 0;
+          const question = {
+            kind: 'item.add.description',
+            index: nextIndex,
+            prompt: description
+              ? `Em đã nhận tên mặt hàng mới: ${description}\nAnh cho em xuất xứ của mặt hàng này nhé?`
+              : 'Anh gửi giúp em tên sản phẩm mới để em thêm dòng nhé.'
+          };
+          if (description) {
+            pending.payload.items = Array.isArray(pending.payload.items) ? pending.payload.items : [];
+            pending.payload.items.push({
+              description,
+              origin: '',
+              unit: '',
+              quantity: 0,
+              costPrice: 0,
+              productContent: ''
+            });
+            question.kind = 'item.add.origin';
+          }
+          setPending(chatId, {
+            type: 'question',
+            payload: pending.payload,
+            mode: pending.mode,
+            sourceLabel: pending.sourceLabel,
+            question
+          });
+          await bot.sendMessage(chatId, question.prompt);
+          return;
+        }
+
+        if (deleteMatch) {
+          const rowIndex = Number(deleteMatch[2]) - 1;
+          if (!Number.isInteger(rowIndex) || rowIndex < 0 || !pending.payload?.items?.[rowIndex]) {
+            await bot.sendMessage(chatId, 'Dòng hàng cần xóa chưa hợp lệ. Anh nhập lại theo dạng: xóa 1');
+            return;
+          }
+          const removed = pending.payload.items.splice(rowIndex, 1)[0];
+          if (!pending.payload.items.length) {
+            pending.payload.items.push({ description: '', origin: '', unit: '', quantity: 0, costPrice: 0, productContent: '' });
+          }
+          await bot.sendMessage(chatId, `Em đã xóa dòng ${rowIndex + 1}: ${removed?.description || 'Chưa rõ tên sản phẩm'}.`);
+          await continueWithPayload(chatId, pending.payload, pending.mode, pending.sourceLabel);
+          return;
+        }
+
+        const rowIndex = Number(trimmed) - 1;
+        if (!Number.isInteger(rowIndex) || rowIndex < 0 || !pending.payload?.items?.[rowIndex]) {
+          await bot.sendMessage(chatId, 'Dòng hàng chưa hợp lệ. Anh nhập lại số dòng giúp em nhé, hoặc nhắn "thêm" / "xóa 1".');
+          return;
+        }
+        setPending(chatId, {
+          type: 'item-edit-field',
+          payload: pending.payload,
+          mode: pending.mode,
+          sourceLabel: pending.sourceLabel,
+          itemIndex: rowIndex
+        });
+        const item = pending.payload.items[rowIndex];
+        await bot.sendMessage(chatId, `Anh đang sửa dòng ${rowIndex + 1}:\n${formatEditableItemLine(item, rowIndex)}\n\nAnh muốn sửa gì?\n1. Tên sản phẩm\n2. Giá đầu vào\n3. Số lượng\n4. Đơn vị\n5. Xuất xứ`);
+        return;
+      }
+
+      if (pending.type === 'item-edit-field') {
+        const itemIndex = pending.itemIndex;
+        if (!pending.payload?.items?.[itemIndex]) {
+          await bot.sendMessage(chatId, 'Em không thấy dòng hàng cần sửa.');
+          await continueWithPayload(chatId, pending.payload, pending.mode, pending.sourceLabel);
+          return;
+        }
+        let question = null;
+        const item = pending.payload.items[itemIndex];
+        if (text.trim() === '1') {
+          question = {
+            kind: 'item.description',
+            index: itemIndex,
+            prompt: `Anh muốn sửa tên sản phẩm:\n${item.description || 'Chưa rõ tên sản phẩm'}\nthành gì?`
+          };
+        } else if (text.trim() === '2') {
+          question = {
+            kind: 'item.costPrice',
+            index: itemIndex,
+            prompt: `Anh muốn sửa giá đầu vào của sản phẩm:\n${itemIndex + 1}. ${item.description || 'Chưa rõ tên sản phẩm'}\nGiá hiện tại: ${Number(item.costPrice || 0).toLocaleString('vi-VN')}\nthành bao nhiêu?`
+          };
+        } else if (text.trim() === '3') {
+          question = {
+            kind: 'item.quantity',
+            index: itemIndex,
+            prompt: `Anh muốn sửa số lượng của sản phẩm:\n${itemIndex + 1}. ${item.description || 'Chưa rõ tên sản phẩm'}\nSố lượng hiện tại: ${Number(item.quantity || 0).toLocaleString('vi-VN')}\nthành bao nhiêu?`
+          };
+        } else if (text.trim() === '4') {
+          question = {
+            kind: 'item.unit',
+            index: itemIndex,
+            prompt: `Anh muốn sửa đơn vị tính của sản phẩm:\n${itemIndex + 1}. ${item.description || 'Chưa rõ tên sản phẩm'}\nĐơn vị hiện tại: ${item.unit || 'Chưa rõ'}\nthành gì?`
+          };
+        } else if (text.trim() === '5') {
+          question = {
+            kind: 'item.origin',
+            index: itemIndex,
+            prompt: `Anh muốn sửa xuất xứ của sản phẩm:\n${itemIndex + 1}. ${item.description || 'Chưa rõ tên sản phẩm'}\nXuất xứ hiện tại: ${item.origin || 'Chưa rõ'}\nthành gì?`
+          };
+        } else {
+          await bot.sendMessage(chatId, 'Anh chọn 1 tên sản phẩm, 2 giá đầu vào, 3 số lượng, 4 đơn vị, hoặc 5 xuất xứ nhé.');
+          return;
+        }
+        setPending(chatId, {
+          type: 'question',
+          payload: pending.payload,
+          mode: pending.mode,
+          sourceLabel: pending.sourceLabel,
+          question
+        });
+        await bot.sendMessage(chatId, question.prompt);
         return;
       }
 
@@ -505,11 +722,18 @@ bot.on('message', async (msg) => {
 
         const previewQuestions = {
           '1': { kind: 'customer.name', prompt: 'Anh muốn sửa tên khách hàng thành gì để em cập nhật lại preview?' },
-          '3': { kind: 'profitRate', prompt: 'Anh muốn sửa lãi suất thành bao nhiêu (%)?' },
-          '4': { kind: 'vatPercent', prompt: 'Anh muốn sửa VAT thành bao nhiêu (%)?' },
-          '5': { kind: 'meta.signerChoice', prompt: 'Anh muốn đổi người ký nào? Nhập 1, 2 hoặc 3 giúp em nhé.' },
-          '6': { kind: 'meta.paymentDaysText', prompt: 'Anh gửi giúp em điều khoản / nội dung chính mới để em cập nhật lại preview nhé.' }
+          '2': { kind: 'customer.receiver', prompt: 'Anh muốn sửa người nhận thành gì?' },
+          '3': { kind: 'customer.department', prompt: 'Anh muốn sửa bộ phận thành gì?' },
+          '4': { kind: 'customer.phone', prompt: 'Anh muốn sửa số điện thoại thành gì?' },
+          '5': { kind: 'customer.email', prompt: 'Anh muốn sửa email thành gì?' },
+          '7': { kind: 'profitRate', prompt: 'Anh muốn sửa lãi suất thành bao nhiêu (%)?' },
+          '8': { kind: 'vatPercent', prompt: 'Anh muốn sửa VAT thành bao nhiêu (%)?' },
+          '9': { kind: 'meta.signerChoice', prompt: 'Anh muốn đổi người ký nào? Nhập 1, 2 hoặc 3 giúp em nhé.' },
+          '10': { kind: 'meta.paymentDaysText', prompt: 'Anh gửi giúp em điều khoản / nội dung chính mới để em cập nhật lại preview nhé.' },
+          '11': { kind: 'meta.warrantyMonthsText', prompt: 'Anh muốn sửa thời gian bảo hành thành gì?' },
+          '12': { kind: 'meta.quoteValidityDaysText', prompt: 'Anh muốn sửa hiệu lực báo giá thành gì?' }
         };
+
 
         if (previewQuestions[trimmed]) {
           setPending(chatId, {
@@ -523,9 +747,20 @@ bot.on('message', async (msg) => {
           return;
         }
 
-        if (trimmed === '2') {
-          await bot.sendMessage(chatId, 'Số mặt hàng hiện chưa hỗ trợ sửa nhanh bằng STT ở bản này. Anh sửa báo giá cũ sâu hơn em làm tiếp cho Anh sau nhé.');
-          await bot.sendMessage(chatId, buildPreviewMessage(pending.payload));
+        if (trimmed === '6') {
+          await sendItemEditList(chatId, pending.payload, pending.mode, pending.sourceLabel);
+          return;
+        }
+
+        if (trimmed === '2' || trimmed === '3' || trimmed === '4' || trimmed === '5') {
+          setPending(chatId, {
+            type: 'question',
+            payload: pending.payload,
+            mode: pending.mode,
+            sourceLabel: pending.sourceLabel,
+            question: previewQuestions[trimmed]
+          });
+          await bot.sendMessage(chatId, previewQuestions[trimmed].prompt);
           return;
         }
 
@@ -535,7 +770,7 @@ bot.on('message', async (msg) => {
           return;
         }
 
-        await bot.sendMessage(chatId, 'Anh nhắn ok để xuất, hoặc nhắn số 1, 3, 4, 5, 6 để sửa nhanh trên preview nhé.');
+        await bot.sendMessage(chatId, 'Anh nhắn ok để xuất, hoặc nhắn một số như 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12 để sửa nhanh trên preview nhé.');
         return;
       }
 
@@ -553,6 +788,24 @@ bot.on('message', async (msg) => {
         case 'customer.name':
           pending.payload.customer.name = String(answer || '');
           break;
+        case 'customer.receiver':
+          pending.payload.customer.receiver = String(answer || '');
+          break;
+        case 'customer.department':
+          pending.payload.customer.department = String(answer || '');
+          break;
+        case 'customer.phone':
+          pending.payload.customer.phone = String(answer || '');
+          break;
+        case 'customer.email':
+          pending.payload.customer.email = String(answer || '');
+          break;
+        case 'item.description':
+          if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].description = String(answer || '');
+          break;
+        case 'item.origin':
+          if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].origin = String(answer || '');
+          break;
         case 'item.unit':
           if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].unit = String(answer || '');
           break;
@@ -560,6 +813,78 @@ bot.on('message', async (msg) => {
           if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].quantity = Number(answer || 0);
           break;
         case 'item.costPrice':
+          if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].costPrice = Number(answer || 0);
+          break;
+        case 'item.add.description': {
+          pending.payload.items = Array.isArray(pending.payload.items) ? pending.payload.items : [];
+          pending.payload.items.push({
+            description: String(answer || ''),
+            origin: '',
+            unit: '',
+            quantity: 0,
+            costPrice: 0,
+            productContent: ''
+          });
+          setPending(chatId, {
+            type: 'question',
+            payload: pending.payload,
+            mode: pending.mode,
+            sourceLabel: pending.sourceLabel,
+            question: {
+              kind: 'item.add.origin',
+              index: pending.payload.items.length - 1,
+              prompt: 'Anh cho em xuất xứ của mặt hàng mới nhé?'
+            }
+          });
+          await bot.sendMessage(chatId, 'Anh cho em xuất xứ của mặt hàng mới nhé?');
+          return;
+        }
+        case 'item.add.origin':
+          if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].origin = String(answer || '');
+          setPending(chatId, {
+            type: 'question',
+            payload: pending.payload,
+            mode: pending.mode,
+            sourceLabel: pending.sourceLabel,
+            question: {
+              kind: 'item.add.unit',
+              index: pending.question.index,
+              prompt: 'Anh cho em đơn vị tính của mặt hàng mới nhé?'
+            }
+          });
+          await bot.sendMessage(chatId, 'Anh cho em đơn vị tính của mặt hàng mới nhé?');
+          return;
+        case 'item.add.unit':
+          if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].unit = String(answer || '');
+          setPending(chatId, {
+            type: 'question',
+            payload: pending.payload,
+            mode: pending.mode,
+            sourceLabel: pending.sourceLabel,
+            question: {
+              kind: 'item.add.quantity',
+              index: pending.question.index,
+              prompt: 'Anh cho em số lượng của mặt hàng mới nhé?'
+            }
+          });
+          await bot.sendMessage(chatId, 'Anh cho em số lượng của mặt hàng mới nhé?');
+          return;
+        case 'item.add.quantity':
+          if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].quantity = Number(answer || 0);
+          setPending(chatId, {
+            type: 'question',
+            payload: pending.payload,
+            mode: pending.mode,
+            sourceLabel: pending.sourceLabel,
+            question: {
+              kind: 'item.add.costPrice',
+              index: pending.question.index,
+              prompt: 'Anh cho em giá đầu vào của mặt hàng mới nhé?'
+            }
+          });
+          await bot.sendMessage(chatId, 'Anh cho em giá đầu vào của mặt hàng mới nhé?');
+          return;
+        case 'item.add.costPrice':
           if (pending.payload.items[pending.question.index]) pending.payload.items[pending.question.index].costPrice = Number(answer || 0);
           break;
         case 'profitRate':
@@ -622,14 +947,19 @@ bot.on('message', async (msg) => {
 
     const directQuoteLookup = findQuoteByNumber(text);
     if (directQuoteLookup) {
+      if (!isAdminUser(msg.from?.id) && String(directQuoteLookup.createdBy || '') !== String(msg.from?.id || '')) {
+        await bot.sendMessage(chatId, 'Anh chỉ có quyền xem các báo giá do chính mình tạo.', buildMainMenu(chatId));
+        return;
+      }
       setPending(chatId, { type: 'quote-view', quoteNumber: directQuoteLookup.quoteNumber });
       await bot.sendMessage(chatId, formatQuoteSummary(directQuoteLookup), buildQuoteActionMenu(directQuoteLookup.quoteNumber));
       return;
     }
 
     if (text === '🔎 Tìm báo giá') {
+      if (!ensureAdmin(chatId, msg.from?.id)) return;
       setPending(chatId, { type: 'search-quote' });
-      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', mainMenu);
+      await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenu(chatId));
       return;
     }
 
@@ -659,6 +989,8 @@ bot.on('message', async (msg) => {
       defaultProfitRate: config.defaultProfitRate,
       defaultVatPercent: config.defaultVatPercent
     });
+
+    attachTelegramUserMeta(payload, msg);
 
     if (imagePath && fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
     if (processedImagePath && fs.existsSync(processedImagePath)) fs.unlinkSync(processedImagePath);
