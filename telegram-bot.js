@@ -98,7 +98,9 @@ function buildMainMenu(userId) {
             ['❓ Hướng dẫn']
           ],
       resize_keyboard: true,
-      persistent: true
+      persistent: true,
+      is_persistent: true,
+      one_time_keyboard: false
     }
   };
 }
