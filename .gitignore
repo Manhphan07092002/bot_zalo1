@@ -5,3 +5,7 @@ output/
 data/quote-history.json
 data/quotes/
 data/counter.json
+data/*.bak
+data/*.bak-*
+data/test-*.json
+*.bak
