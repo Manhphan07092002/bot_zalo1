@@ -503,6 +503,7 @@ bot.on('message', async (msg) => {
 
     if (text === '🔎 Tìm báo giá') {
       clearPending(chatId);
+      if (!ensureAdmin(chatId, msg.from?.id)) return;
       setPending(chatId, { type: 'search-quote' });
       await bot.sendMessage(chatId, 'Anh nhập số BG hoặc tên khách hàng để em tìm nhé.', buildMainMenu(chatId));
       return;
