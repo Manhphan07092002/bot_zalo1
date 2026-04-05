@@ -35,6 +35,7 @@ const {
   buildItemEditFieldState,
   buildItemEditFieldPrompt
 } = require('./services/item-edit-flow');
+const { buildQuoteListView } = require('./services/quote-list-flow');
 const TelegramBot = require('node-telegram-bot-api');
 
 const execFileAsync = promisify(execFile);
@@ -423,27 +424,20 @@ bot.on('callback_query', async (query) => {
       const [, listMode, pageRaw, keywordEncoded] = quoteListMatch;
       const page = Number(pageRaw || 0);
       const keyword = decodeURIComponent(keywordEncoded || '');
-      let entries = [];
-      let title = '';
-
-      if (listMode === 'recent') {
-        if (!ensureAdmin(chatId, userId)) {
-          await bot.answerCallbackQuery(query.id, { text: 'Chức năng này chỉ dành cho admin', show_alert: false });
-          return;
-        }
-        entries = getRecentQuotes(500);
-        title = 'Báo giá gần đây';
-      } else if (listMode === 'mine') {
-        entries = getQuotesByUser(userId, 500);
-        if (!entries.length && isAdminUser(userId)) entries = getRecentQuotes(500);
-        title = 'Báo giá của tôi';
-      } else {
-        const results = findQuotesByKeyword(keyword, 500);
-        entries = isAdminUser(userId)
-          ? results
-          : results.filter((entry) => String(entry.createdBy || '') === String(userId || ''));
-        title = `Kết quả tìm cho: ${keyword}`;
+      if (listMode === 'recent' && !ensureAdmin(chatId, userId)) {
+        await bot.answerCallbackQuery(query.id, { text: 'Chức năng này chỉ dành cho admin', show_alert: false });
+        return;
       }
+
+      const { entries, title } = buildQuoteListView({
+        mode: listMode,
+        userId,
+        keyword,
+        isAdminUser,
+        getRecentQuotes,
+        getQuotesByUser,
+        findQuotesByKeyword
+      });
 
       await bot.answerCallbackQuery(query.id, { text: `Trang ${page + 1}` });
       await sendQuotePicker(chatId, entries, title, userId, { page, mode: listMode, keyword });
@@ -568,17 +562,29 @@ bot.on('message', async (msg) => {
     if (text === '📂 Báo giá gần đây') {
       clearPending(chatId);
       if (!ensureAdmin(chatId, msg.from?.id)) return;
-      await sendQuotePicker(chatId, getRecentQuotes(500), 'Báo giá gần đây', msg.from?.id, { page: 0, mode: 'recent' });
+      const { entries, title } = buildQuoteListView({
+        mode: 'recent',
+        userId: msg.from?.id,
+        isAdminUser,
+        getRecentQuotes,
+        getQuotesByUser,
+        findQuotesByKeyword
+      });
+      await sendQuotePicker(chatId, entries, title, msg.from?.id, { page: 0, mode: 'recent' });
       return;
     }
 
     if (text === '📁 Báo giá của tôi') {
       clearPending(chatId);
-      let myQuotes = getQuotesByUser(msg.from?.id, 500);
-      if (!myQuotes.length && isAdminUser(msg)) {
-        myQuotes = getRecentQuotes(500);
-      }
-      await sendQuotePicker(chatId, myQuotes, 'Báo giá của tôi', msg.from?.id, { page: 0, mode: 'mine' });
+      const { entries, title } = buildQuoteListView({
+        mode: 'mine',
+        userId: msg.from?.id,
+        isAdminUser,
+        getRecentQuotes,
+        getQuotesByUser,
+        findQuotesByKeyword
+      });
+      await sendQuotePicker(chatId, entries, title, msg.from?.id, { page: 0, mode: 'mine' });
       return;
     }
 
@@ -663,11 +669,16 @@ bot.on('message', async (msg) => {
           await bot.sendMessage(chatId, formatQuoteSummary(exact), buildQuoteActionMenu(exact.quoteNumber));
           return;
         }
-        const results = findQuotesByKeyword(text, 500);
-        const scopedResults = isAdminUser(msg.from?.id)
-          ? results
-          : results.filter((entry) => String(entry.createdBy || '') === String(msg.from?.id || ''));
-        await sendQuotePicker(chatId, scopedResults, `Kết quả tìm cho: ${text}`, msg.from?.id, { page: 0, mode: 'search', keyword: text });
+        const { entries, title } = buildQuoteListView({
+          mode: 'search',
+          userId: msg.from?.id,
+          keyword: text,
+          isAdminUser,
+          getRecentQuotes,
+          getQuotesByUser,
+          findQuotesByKeyword
+        });
+        await sendQuotePicker(chatId, entries, title, msg.from?.id, { page: 0, mode: 'search', keyword: text });
         return;
       }
 
